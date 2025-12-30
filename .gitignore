@@ -8,6 +8,9 @@ ENV/
 .env
 .env.local
 
+# Export reports directory
+vrcx_exports/
+
 # Python cache
 __pycache__/
 *.py[cod]

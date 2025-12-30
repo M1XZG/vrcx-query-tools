@@ -73,26 +73,57 @@ The script will automatically try to locate your database, but you can specify a
 
 ### Running the Python Query Script
 
+#### Basic Usage (Query Today)
+
 ```bash
 python vrcx_query.py
 ```
 
-This will:
-1. Connect to your VRCX database
-2. Display your location history for today
-3. Show an hour-by-hour summary of instances and people
-4. Export data to CSV and Excel files in `./vrcx_exports/`
+This will connect to your VRCX database and display today's hour-by-hour attendance summary, exporting to CSV and Excel files.
 
-### Querying Specific Dates
+#### Query Specific Dates
 
-Edit the `vrcx_query.py` file and modify the date string in the `main()` function:
+```bash
+# Query a specific date
+python vrcx_query.py --date 2025-12-25
+```
 
-```python
-# Instead of today's date
-today = datetime.now().strftime('%Y-%m-%d')
+#### Query Date Range (Daily Breakdown)
 
-# Use a specific date
-specific_date = '2025-12-25'  # YYYY-MM-DD format
+Get hour-by-hour attendance for each day in a range:
+
+```bash
+# Show every day in December with hourly breakdown
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31
+
+# Query a specific week
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-27
+```
+
+This displays Date, Hour, and Number of People for each hour of each day in the range.
+
+#### Calculate Average Attendance
+
+Get average attendance by hour across a date range:
+
+```bash
+# Average for a date range
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average
+
+# Average for just one day
+python vrcx_query.py --date 2025-12-25 --average
+```
+
+This shows the average number of people joining/leaving at each hour, useful for understanding patterns.
+
+#### Additional Options
+
+```bash
+# Skip exporting to files
+python vrcx_query.py --date 2025-12-25 --no-export
+
+# Combine options
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --no-export
 ```
 
 ### Available Query Functions
@@ -101,23 +132,31 @@ The `VRCXQuery` class provides several methods:
 
 - `get_location_history(date_str)` - Your instance visits for a date
 - `get_join_leave_events(location, date_str)` - Who joined/left instances
-- `get_hour_by_hour_summary(date_str)` - Hourly statistics
+- `get_hour_by_hour_summary(date_str)` - Hourly statistics for a specific date
+- `get_hour_by_hour_average(start_date_str, end_date_str)` - Average attendance across a date range
 - `get_people_in_instances_by_hour(date_str)` - Detailed breakdown
 - `get_instance_statistics(date_str)` - Instance visit stats
 
 ### Export Formats
 
 The script exports data in two formats:
-- **CSV:** `vrcx_exports/vrcx_hourly_YYYY-MM-DD.csv`
-- **Excel:** `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx` (with formatting)
+- **CSV:** 
+  - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.csv`
+  - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+  - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+- **Excel:** 
+  - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx`
+  - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
+  - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
 
 ## Documentation
 
 Additional documentation in this repository:
 
-- [VRCX_QUERY_GUIDE.md](VRCX_QUERY_GUIDE.md) - Complete query guide
-- [DATABASE_SCHEMA_DIAGRAM.md](DATABASE_SCHEMA_DIAGRAM.md) - Database structure
-- [DATABASE_STRUCTURE_REVIEW.md](DATABASE_STRUCTURE_REVIEW.md) - Detailed schema analysis
+- [docs/VRCX_QUERY_GUIDE.md](docs/VRCX_QUERY_GUIDE.md) - Complete query guide
+- [docs/DATABASE_SCHEMA_DIAGRAM.md](docs/DATABASE_SCHEMA_DIAGRAM.md) - Database structure
+- [docs/DATABASE_STRUCTURE_REVIEW.md](docs/DATABASE_STRUCTURE_REVIEW.md) - Detailed schema analysis
+- [docs/README_DATABASE_REVIEW.md](docs/README_DATABASE_REVIEW.md) - Database review documentation
 
 ## SQL Queries
 

@@ -23,6 +23,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
+import argparse
 
 # ==============================================================================
 # Configuration
@@ -204,12 +205,10 @@ class VRCXQuery:
     
     def get_hour_by_hour_summary(self, date_str=None):
         """
-        Get hour-by-hour summary of instances and people.
-        
-        THIS IS YOUR PRIMARY QUERY FOR THE SPREADSHEET
+        Get hour-by-hour summary of instances and people for a specific date.
         
         Returns data like:
-        Hour | Instance | World Name | People Joined | People Left | Net Change
+        Hour | People Joined | People Left | Net Change | Unique People
         """
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
@@ -217,19 +216,75 @@ class VRCXQuery:
         query = """
         SELECT 
             CAST(strftime('%H', created_at) AS INTEGER) as hour,
-            location,
-            world_name,
             SUM(CASE WHEN type = 'join' THEN 1 ELSE 0 END) as joins,
             SUM(CASE WHEN type = 'leave' THEN 1 ELSE 0 END) as leaves,
             SUM(CASE WHEN type = 'join' THEN 1 ELSE -1 END) as net_change,
             COUNT(DISTINCT display_name) as unique_people
         FROM gamelog_join_leave
         WHERE DATE(created_at) = ?
-        GROUP BY hour, location
-        ORDER BY hour ASC, location ASC
+        GROUP BY hour
+        ORDER BY hour ASC
         """
         
         results = self.db.execute(query, (date_str,))
+        return results
+    
+    def get_hour_by_hour_average(self, start_date_str=None, end_date_str=None):
+        """
+        Get average hour-by-hour attendance across a date range.
+        
+        Returns average data like:
+        Hour | Avg Unique People
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            hour,
+            CAST(ROUND(AVG(unique_people)) AS INTEGER) as avg_unique_people
+        FROM (
+            SELECT 
+                DATE(created_at) as date,
+                CAST(strftime('%H', created_at) AS INTEGER) as hour,
+                COUNT(DISTINCT display_name) as unique_people
+            FROM gamelog_join_leave
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at), hour
+        )
+        GROUP BY hour
+        ORDER BY hour ASC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
+    def get_daily_hourly_summary(self, start_date_str=None, end_date_str=None):
+        """
+        Get hour-by-hour summary for each day in a date range.
+        
+        Returns data like:
+        Date | Hour | Unique People
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            DATE(created_at) as date,
+            CAST(strftime('%H', created_at) AS INTEGER) as hour,
+            COUNT(DISTINCT display_name) as unique_people
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ?
+        GROUP BY DATE(created_at), hour
+        ORDER BY DATE(created_at) ASC, hour ASC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
         return results
     
     def get_people_in_instances_by_hour(self, date_str=None):
@@ -312,31 +367,84 @@ def print_hour_by_hour_summary(db, date_str=None):
     query = VRCXQuery(db)
     summary = query.get_hour_by_hour_summary(date_str)
     
-    print(f"\n{'='*120}")
+    print(f"\n{'='*80}")
     print(f"Hour-by-Hour Summary - {date_str or 'Today'}")
-    print(f"{'='*120}")
+    print(f"{'='*80}")
     
     if not summary:
         print("No data found for this date")
         return
     
     # Print header
-    print(f"{'Hour':<6} {'Instance':<35} {'World':<30} {'Joins':<8} {'Leaves':<8} {'Net':<6} {'People':<8}")
-    print("-" * 120)
+    print(f"{'Hour':<6} {'Joins':<8} {'Leaves':<8} {'Net':<6} {'People':<8}")
+    print("-" * 80)
     
     for row in summary:
         hour = f"{row['hour']:02d}:00"
-        instance = row['location'][:34] if row['location'] else 'Unknown'
-        world = row['world_name'][:28] if row['world_name'] else 'Unknown'
         joins = row['joins'] or 0
         leaves = row['leaves'] or 0
         net = row['net_change'] or 0
         people = row['unique_people'] or 0
         
-        print(f"{hour:<6} {instance:<35} {world:<30} {joins:<8} {leaves:<8} {net:<6} {people:<8}")
+        print(f"{hour:<6} {joins:<8} {leaves:<8} {net:<6} {people:<8}")
 
 
-def export_to_csv(db, output_file, date_str=None):
+def print_hour_by_hour_average(db, start_date_str=None, end_date_str=None):
+    """Print average hour-by-hour attendance across a date range."""
+    query = VRCXQuery(db)
+    summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+    
+    print(f"\n{'='*50}")
+    print(f"Average Attendance by Hour - {start_date_str} to {end_date_str or start_date_str}")
+    print(f"{'='*50}")
+    
+    if not summary:
+        print("No data found for this date range")
+        return
+    
+    # Print header
+    print(f"{'Hour':<6} {'Avg People':<15}")
+    print("-" * 50)
+    
+    for row in summary:
+        hour = f"{row['hour']:02d}:00"
+        avg_people = row['avg_unique_people'] or 0
+        
+        print(f"{hour:<6} {avg_people:<15}")
+
+
+def print_daily_hourly_summary(db, start_date_str=None, end_date_str=None):
+    """Print hour-by-hour summary for each day in a date range."""
+    query = VRCXQuery(db)
+    summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
+    
+    print(f"\n{'='*60}")
+    print(f"Daily Hour-by-Hour Attendance - {start_date_str} to {end_date_str or start_date_str}")
+    print(f"{'='*60}")
+    
+    if not summary:
+        print("No data found for this date range")
+        return
+    
+    # Print header
+    print(f"{'Date':<12} {'Hour':<6} {'People':<10}")
+    print("-" * 60)
+    
+    current_date = None
+    for row in summary:
+        date = row['date']
+        hour = f"{row['hour']:02d}:00"
+        people = row['unique_people'] or 0
+        
+        # Add blank line between dates for readability
+        if current_date and current_date != date:
+            print()
+        
+        print(f"{date:<12} {hour:<6} {people:<10}")
+        current_date = date
+
+
+def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False):
     """Export hour-by-hour data to CSV file."""
     try:
         import csv
@@ -345,7 +453,16 @@ def export_to_csv(db, output_file, date_str=None):
         return
     
     query = VRCXQuery(db)
-    summary = query.get_hour_by_hour_summary(date_str)
+    
+    if is_average:
+        summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+        fieldnames = ['Hour', 'Avg People']
+    elif is_daily:
+        summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
+        fieldnames = ['Date', 'Hour', 'People']
+    else:
+        summary = query.get_hour_by_hour_summary(date_str)
+        fieldnames = ['Hour', 'Joins', 'Leaves', 'Net Change', 'Unique People']
     
     if not summary:
         print("No data to export")
@@ -353,23 +470,33 @@ def export_to_csv(db, output_file, date_str=None):
     
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Hour', 'Instance', 'World Name', 'Joins', 'Leaves', 'Net Change', 'Unique People'])
+        writer.writerow(fieldnames)
         
         for row in summary:
-            writer.writerow([
-                f"{row['hour']:02d}:00",
-                row['location'] or '',
-                row['world_name'] or '',
-                row['joins'] or 0,
-                row['leaves'] or 0,
-                row['net_change'] or 0,
-                row['unique_people'] or 0
-            ])
+            if is_average:
+                writer.writerow([
+                    f"{row['hour']:02d}:00",
+                    row['avg_unique_people'] or 0
+                ])
+            elif is_daily:
+                writer.writerow([
+                    row['date'],
+                    f"{row['hour']:02d}:00",
+                    row['unique_people'] or 0
+                ])
+            else:
+                writer.writerow([
+                    f"{row['hour']:02d}:00",
+                    row['joins'] or 0,
+                    row['leaves'] or 0,
+                    row['net_change'] or 0,
+                    row['unique_people'] or 0
+                ])
     
     print(f"✓ Exported to {output_file}")
 
 
-def export_to_excel(db, output_file, date_str=None):
+def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False):
     """Export hour-by-hour data to Excel file."""
     try:
         import openpyxl
@@ -379,7 +506,16 @@ def export_to_excel(db, output_file, date_str=None):
         return
     
     query = VRCXQuery(db)
-    summary = query.get_hour_by_hour_summary(date_str)
+    
+    if is_average:
+        summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+        headers = ['Hour', 'Avg People']
+    elif is_daily:
+        summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
+        headers = ['Date', 'Hour', 'People']
+    else:
+        summary = query.get_hour_by_hour_summary(date_str)
+        headers = ['Hour', 'Joins', 'Leaves', 'Net Change', 'Unique People']
     
     if not summary:
         print("No data to export")
@@ -391,7 +527,6 @@ def export_to_excel(db, output_file, date_str=None):
     ws.title = "Hour-by-Hour"
     
     # Add headers
-    headers = ['Hour', 'Instance', 'World Name', 'Joins', 'Leaves', 'Net Change', 'Unique People']
     ws.append(headers)
     
     # Style headers
@@ -405,29 +540,52 @@ def export_to_excel(db, output_file, date_str=None):
     
     # Add data rows
     for row in summary:
-        ws.append([
-            f"{row['hour']:02d}:00",
-            row['location'] or '',
-            row['world_name'] or '',
-            row['joins'] or 0,
-            row['leaves'] or 0,
-            row['net_change'] or 0,
-            row['unique_people'] or 0
-        ])
+        if is_average:
+            ws.append([
+                f"{row['hour']:02d}:00",
+                row['avg_unique_people'] or 0
+            ])
+        elif is_daily:
+            ws.append([
+                row['date'],
+                f"{row['hour']:02d}:00",
+                row['unique_people'] or 0
+            ])
+        else:
+            ws.append([
+                f"{row['hour']:02d}:00",
+                row['joins'] or 0,
+                row['leaves'] or 0,
+                row['net_change'] or 0,
+                row['unique_people'] or 0
+            ])
     
     # Adjust column widths
-    ws.column_dimensions['A'].width = 10
-    ws.column_dimensions['B'].width = 40
-    ws.column_dimensions['C'].width = 35
-    ws.column_dimensions['D'].width = 10
-    ws.column_dimensions['E'].width = 10
-    ws.column_dimensions['F'].width = 12
-    ws.column_dimensions['G'].width = 15
-    
-    # Center align numeric columns
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=4, max_col=7):
-        for cell in row:
-            cell.alignment = Alignment(horizontal="center")
+    if is_average:
+        ws.column_dimensions['A'].width = 10
+        ws.column_dimensions['B'].width = 15
+        # Center align numeric columns
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=2):
+            for cell in row:
+                cell.alignment = Alignment(horizontal="center")
+    elif is_daily:
+        ws.column_dimensions['A'].width = 12
+        ws.column_dimensions['B'].width = 10
+        ws.column_dimensions['C'].width = 12
+        # Center align numeric columns
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=3):
+            for cell in row:
+                cell.alignment = Alignment(horizontal="center")
+    else:
+        ws.column_dimensions['A'].width = 10
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 15
+        # Center align numeric columns
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=5):
+            for cell in row:
+                cell.alignment = Alignment(horizontal="center")
     
     wb.save(output_file)
     print(f"✓ Exported to {output_file}")
@@ -439,6 +597,30 @@ def export_to_excel(db, output_file, date_str=None):
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(description='Query VRCX database for VRChat activity analysis')
+    parser.add_argument('--date', type=str, help='Query a specific date (YYYY-MM-DD format)')
+    parser.add_argument('--start-date', type=str, help='Start date for range query (YYYY-MM-DD format)')
+    parser.add_argument('--end-date', type=str, help='End date for range query (YYYY-MM-DD format)')
+    parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
+    parser.add_argument('--no-export', action='store_true', help='Skip exporting to CSV and Excel')
+    
+    args = parser.parse_args()
+    
+    # Determine dates to query
+    is_date_range = args.start_date and args.end_date
+    
+    if args.average:
+        if not args.start_date:
+            args.start_date = datetime.now().strftime('%Y-%m-%d')
+        if not args.end_date:
+            args.end_date = args.start_date
+    elif is_date_range:
+        # Date range without average = daily breakdown
+        pass
+    else:
+        if not args.date:
+            args.date = datetime.now().strftime('%Y-%m-%d')
+    
     # Connect to database
     db = VRCXDatabase(DATABASE_PATH)
     db.connect()
@@ -455,30 +637,49 @@ def main():
         print("QUERYING VRCX DATABASE")
         print("="*80)
         
-        # Get today's data
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # Show location history
-        print_location_history(db, today)
-        
-        # Show hour-by-hour summary
-        print_hour_by_hour_summary(db, today)
+        if args.average:
+            print_hour_by_hour_average(db, args.start_date, args.end_date)
+        elif is_date_range:
+            print_daily_hourly_summary(db, args.start_date, args.end_date)
+        else:
+            print_location_history(db, args.date)
+            print_hour_by_hour_summary(db, args.date)
         
         # Export to files
-        print(f"\n{'='*80}")
-        print("EXPORTING DATA")
-        print(f"{'='*80}")
-        
-        output_dir = Path("./vrcx_exports")
-        output_dir.mkdir(exist_ok=True)
-        
-        csv_file = output_dir / f"vrcx_hourly_{today}.csv"
-        export_to_csv(db, str(csv_file), today)
-        
-        xlsx_file = output_dir / f"vrcx_hourly_{today}.xlsx"
-        export_to_excel(db, str(xlsx_file), today)
-        
-        print(f"\n✓ All exports completed in {output_dir}/")
+        if not args.no_export:
+            print(f"\n{'='*80}")
+            print("EXPORTING DATA")
+            print(f"{'='*80}")
+            
+            output_dir = Path("./vrcx_exports")
+            output_dir.mkdir(exist_ok=True)
+            
+            if args.average:
+                filename_base = f"vrcx_average_{args.start_date}_to_{args.end_date}"
+                csv_file = output_dir / f"{filename_base}.csv"
+                xlsx_file = output_dir / f"{filename_base}.xlsx"
+                
+                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                             end_date_str=args.end_date, is_average=True)
+                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                               end_date_str=args.end_date, is_average=True)
+            elif is_date_range:
+                filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
+                csv_file = output_dir / f"{filename_base}.csv"
+                xlsx_file = output_dir / f"{filename_base}.xlsx"
+                
+                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                             end_date_str=args.end_date, is_daily=True)
+                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                               end_date_str=args.end_date, is_daily=True)
+            else:
+                csv_file = output_dir / f"vrcx_hourly_{args.date}.csv"
+                xlsx_file = output_dir / f"vrcx_hourly_{args.date}.xlsx"
+                
+                export_to_csv(db, str(csv_file), args.date)
+                export_to_excel(db, str(xlsx_file), args.date)
+            
+            print(f"\n✓ All exports completed in {output_dir}/")
         
     except Exception as e:
         print(f"\n✗ Error: {e}")

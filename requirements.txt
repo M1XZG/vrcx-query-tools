@@ -6,7 +6,4 @@ python-dotenv==1.0.0
 # Excel export support
 openpyxl==3.1.2
 
-# Data analysis and CSV handling (built-in csv module is also available)
-pandas==2.1.4
-
-# Note: sqlite3 is included with Python standard library
+# Note: sqlite3 and csv modules are included with Python standard library
