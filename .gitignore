@@ -1,0 +1,35 @@
+# Python virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment variables (contains sensitive local paths)
+.env
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files (if copied locally)
+*.sqlite3
+*.db
