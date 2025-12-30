@@ -157,10 +157,7 @@ Additional documentation in this repository:
 - [docs/DATABASE_SCHEMA_DIAGRAM.md](docs/DATABASE_SCHEMA_DIAGRAM.md) - Database structure
 - [docs/DATABASE_STRUCTURE_REVIEW.md](docs/DATABASE_STRUCTURE_REVIEW.md) - Detailed schema analysis
 - [docs/README_DATABASE_REVIEW.md](docs/README_DATABASE_REVIEW.md) - Database review documentation
-
-## SQL Queries
-
-Raw SQL queries are available in [vrcx_queries.sql](vrcx_queries.sql) for direct database access.
+- [docs/vrcx_queries.sql](docs/vrcx_queries.sql) - Raw SQL query examples for direct database access
 
 ## Troubleshooting
 
