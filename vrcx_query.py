@@ -284,6 +284,37 @@ class VRCXQuery:
         results = self.db.execute(query, (start_date_str, end_date_str))
         return results
     
+    def get_day_of_week_average(self, start_date_str=None, end_date_str=None):
+        """
+        Get average attendance by day of week.
+        
+        Returns data like:
+        Day of Week | Avg Unique People
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            CAST(strftime('%w', date) AS INTEGER) as day_of_week,
+            ROUND(AVG(unique_people)) as avg_unique_people
+        FROM (
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(DISTINCT display_name) as unique_people
+            FROM gamelog_join_leave
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at)
+        )
+        GROUP BY day_of_week
+        ORDER BY day_of_week
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
     def get_people_in_instances_by_hour(self, date_str=None):
         """
         Get detailed breakdown of who was in instances hour-by-hour.
@@ -438,6 +469,34 @@ def print_daily_hourly_summary(db, start_date_str=None, end_date_str=None):
         current_date = date
 
 
+def print_day_of_week_average(db, start_date_str=None, end_date_str=None):
+    """Print average attendance by day of week."""
+    query = VRCXQuery(db)
+    summary = query.get_day_of_week_average(start_date_str, end_date_str)
+    
+    print(f"\n{'='*40}")
+    print(f"Average Attendance by Day of Week")
+    print(f"{start_date_str} to {end_date_str or start_date_str}")
+    print(f"{'='*40}")
+    
+    if not summary:
+        print("No data found for this date range")
+        return
+    
+    # Days of week (Sunday=0 to Saturday=6 in SQLite)
+    days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    
+    # Print header
+    print(f"{'Day of Week':<12} {'Avg People':<15}")
+    print("-" * 40)
+    
+    for row in summary:
+        day_name = days[row['day_of_week']]
+        avg_people = row['avg_unique_people'] or 0
+        
+        print(f"{day_name:<12} {avg_people:<15}")
+
+
 # ==============================================================================
 # Chart Generation Functions
 # ==============================================================================
@@ -516,7 +575,49 @@ def create_daily_chart(db, output_file, date_str=None):
     print(f"✓ Chart saved to {output_file}")
 
 
-def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False):
+def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None):
+    """Create a bar chart showing average attendance by day of week."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+    except ImportError:
+        print("WARNING: matplotlib not installed. Install with: pip install matplotlib")
+        return
+    
+    query = VRCXQuery(db)
+    summary = query.get_day_of_week_average(start_date_str, end_date_str)
+    
+    if not summary:
+        print("No data to chart")
+        return
+    
+    # Days of week (Sunday=0 to Saturday=6 in SQLite)
+    days_full = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    
+    # Extract data
+    day_indices = [row['day_of_week'] for row in summary]
+    day_names = [days_full[idx] for idx in day_indices]
+    avg_people = [row['avg_unique_people'] or 0 for row in summary]
+    
+    # Create chart
+    plt.figure(figsize=(10, 6))
+    plt.bar(day_names, avg_people, color='#2ca02c', width=0.6)
+    plt.xlabel('Day of Week', fontsize=12)
+    plt.ylabel('Average Unique People', fontsize=12)
+    plt.title(f'Average Attendance by Day of Week\n{start_date_str} to {end_date_str or start_date_str}', 
+              fontsize=14, fontweight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Chart saved to {output_file}")
+
+
+def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False):
     """Export hour-by-hour data to CSV file."""
     try:
         import csv
@@ -526,7 +627,11 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
     
     query = VRCXQuery(db)
     
-    if is_average:
+    if is_day_of_week:
+        summary = query.get_day_of_week_average(start_date_str, end_date_str)
+        fieldnames = ['Day of Week', 'Avg People']
+        days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    elif is_average:
         summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
         fieldnames = ['Hour', 'Avg People']
     elif is_daily:
@@ -545,7 +650,12 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
         writer.writerow(fieldnames)
         
         for row in summary:
-            if is_average:
+            if is_day_of_week:
+                writer.writerow([
+                    days[row['day_of_week']],
+                    row['avg_unique_people'] or 0
+                ])
+            elif is_average:
                 writer.writerow([
                     f"{row['hour']:02d}:00",
                     row['avg_unique_people'] or 0
@@ -565,7 +675,7 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
     print(f"✓ Exported to {output_file}")
 
 
-def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False):
+def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False):
     """Export hour-by-hour data to Excel file."""
     try:
         import openpyxl
@@ -576,7 +686,11 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
     
     query = VRCXQuery(db)
     
-    if is_average:
+    if is_day_of_week:
+        summary = query.get_day_of_week_average(start_date_str, end_date_str)
+        headers = ['Day of Week', 'Avg People']
+        days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    elif is_average:
         summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
         headers = ['Hour', 'Avg People']
     elif is_daily:
@@ -609,7 +723,12 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
     
     # Add data rows
     for row in summary:
-        if is_average:
+        if is_day_of_week:
+            ws.append([
+                days[row['day_of_week']],
+                row['avg_unique_people'] or 0
+            ])
+        elif is_average:
             ws.append([
                 f"{row['hour']:02d}:00",
                 row['avg_unique_people'] or 0
@@ -627,7 +746,14 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
             ])
     
     # Adjust column widths
-    if is_average:
+    if is_day_of_week:
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 15
+        # Center align numeric columns
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=2):
+            for cell in row:
+                cell.alignment = Alignment(horizontal="center")
+    elif is_average:
         ws.column_dimensions['A'].width = 10
         ws.column_dimensions['B'].width = 15
         # Center align numeric columns
@@ -665,6 +791,7 @@ def main():
     parser.add_argument('--start-date', type=str, help='Start date for range query (YYYY-MM-DD format)')
     parser.add_argument('--end-date', type=str, help='End date for range query (YYYY-MM-DD format)')
     parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
+    parser.add_argument('--day-of-week', action='store_true', help='Show average attendance by day of week (Monday-Sunday)')
     parser.add_argument('--no-export', action='store_true', help='Skip exporting to CSV and Excel')
     parser.add_argument('--chart', action='store_true', help='Generate chart visualization (PNG)')
     
@@ -673,7 +800,12 @@ def main():
     # Determine dates to query
     is_date_range = args.start_date and args.end_date
     
-    if args.average:
+    if args.day_of_week:
+        if not args.start_date:
+            args.start_date = datetime.now().strftime('%Y-%m-%d')
+        if not args.end_date:
+            args.end_date = args.start_date
+    elif args.average:
         if not args.start_date:
             args.start_date = datetime.now().strftime('%Y-%m-%d')
         if not args.end_date:
@@ -701,7 +833,9 @@ def main():
         print("QUERYING VRCX DATABASE")
         print("="*80)
         
-        if args.average:
+        if args.day_of_week:
+            print_day_of_week_average(db, args.start_date, args.end_date)
+        elif args.average:
             print_hour_by_hour_average(db, args.start_date, args.end_date)
         elif is_date_range:
             print_daily_hourly_summary(db, args.start_date, args.end_date)
@@ -718,7 +852,22 @@ def main():
             output_dir = Path("./vrcx_exports")
             output_dir.mkdir(exist_ok=True)
             
-            if args.average:
+            if args.day_of_week:
+                filename_base = f"vrcx_day_of_week_{args.start_date}_to_{args.end_date}"
+                csv_file = output_dir / f"{filename_base}.csv"
+                xlsx_file = output_dir / f"{filename_base}.xlsx"
+                
+                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                             end_date_str=args.end_date, is_day_of_week=True)
+                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                               end_date_str=args.end_date, is_day_of_week=True)
+                
+                # Generate chart if requested
+                if args.chart:
+                    chart_file = output_dir / f"{filename_base}.png"
+                    create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date)
+                
+            elif args.average:
                 filename_base = f"vrcx_average_{args.start_date}_to_{args.end_date}"
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"

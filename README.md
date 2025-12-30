@@ -116,6 +116,20 @@ python vrcx_query.py --date 2025-12-25 --average
 
 This shows the average number of people joining/leaving at each hour, useful for understanding patterns.
 
+#### Analyze Attendance by Day of Week
+
+Get average attendance by day of week (Sunday-Saturday) across a date range:
+
+```bash
+# Average attendance for each day of the week
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week
+
+# With chart visualization
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --chart
+```
+
+This shows which days of the week have the highest average attendance, helping you identify the best days to visit.
+
 #### Additional Options
 
 ```bash
@@ -130,6 +144,18 @@ python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --n
 ```
 
 The `--chart` flag creates a bar chart visualization showing average attendance by hour.
+
+### Command-Line Options
+
+| Option | Description |
+|--------|-------------|
+| `--date YYYY-MM-DD` | Query a specific date |
+| `--start-date YYYY-MM-DD` | Start date for range query |
+| `--end-date YYYY-MM-DD` | End date for range query |
+| `--average` | Calculate average attendance across date range (hourly) |
+| `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
+| `--no-export` | Skip exporting to CSV and Excel files |
+| `--chart` | Generate chart visualization (PNG image) |
 
 ### Available Query Functions
 
@@ -147,18 +173,24 @@ The `VRCXQuery` class provides several methods:
 The script exports data in multiple formats:
 
 **Data Files:**
+
 - **CSV:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.csv`
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+  - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+
 - **Excel:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx`
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
+  - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
 
 **Charts (when using `--chart` flag):**
+
 - Average attendance: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.png`
 - Daily attendance: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.png`
+- Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.png`
 
 ## Documentation
 
