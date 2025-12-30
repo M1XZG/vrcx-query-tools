@@ -130,6 +130,22 @@ python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week
 
 This shows which days of the week have the highest average attendance, helping you identify the best days to visit.
 
+#### Weekly Breakdown by Day of Week
+
+Get attendance for each day of the week, broken down week-by-week across a date range:
+
+```bash
+# Week-by-week breakdown for December
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly
+
+# With charts (creates one chart per week)
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly --chart
+```
+
+This creates a report showing each week's attendance by day (Sunday through Saturday). When using `--chart`, it generates:
+- A separate bar chart for each individual week
+- A combined chart showing all weeks together in a single image for easy comparison
+
 #### Additional Options
 
 ```bash
@@ -154,6 +170,7 @@ The `--chart` flag creates a bar chart visualization showing average attendance 
 | `--end-date YYYY-MM-DD` | End date for range query |
 | `--average` | Calculate average attendance across date range (hourly) |
 | `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
+| `--weekly` | Show week-by-week breakdown with day-of-week attendance |
 | `--no-export` | Skip exporting to CSV and Excel files |
 | `--chart` | Generate chart visualization (PNG image) |
 
@@ -179,18 +196,23 @@ The script exports data in multiple formats:
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+  - Weekly breakdown: `vrcx_exports/vrcx_weekly_YYYY-MM-DD_to_YYYY-MM-DD.csv`
 
 - **Excel:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx`
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
   - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
+  - Weekly breakdown: `vrcx_exports/vrcx_weekly_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
 
 **Charts (when using `--chart` flag):**
 
 - Average attendance: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.png`
 - Daily attendance: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.png`
 - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.png`
+- Weekly breakdown: 
+  - Individual weeks: `vrcx_exports/vrcx_week_YYYY-MM-DD_to_YYYY-MM-DD.png` (one per week)
+  - Combined view: `vrcx_exports/vrcx_weekly_YYYY-MM-DD_to_YYYY-MM-DD_combined.png` (all weeks in one image)
 
 ## Documentation
 
