@@ -208,7 +208,7 @@ class VRCXQuery:
         Get hour-by-hour summary of instances and people for a specific date.
         
         Returns data like:
-        Hour | People Joined | People Left | Net Change | Unique People
+        Hour | Unique People
         """
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
@@ -216,9 +216,6 @@ class VRCXQuery:
         query = """
         SELECT 
             CAST(strftime('%H', created_at) AS INTEGER) as hour,
-            SUM(CASE WHEN type = 'join' THEN 1 ELSE 0 END) as joins,
-            SUM(CASE WHEN type = 'leave' THEN 1 ELSE 0 END) as leaves,
-            SUM(CASE WHEN type = 'join' THEN 1 ELSE -1 END) as net_change,
             COUNT(DISTINCT display_name) as unique_people
         FROM gamelog_join_leave
         WHERE DATE(created_at) = ?
@@ -367,26 +364,23 @@ def print_hour_by_hour_summary(db, date_str=None):
     query = VRCXQuery(db)
     summary = query.get_hour_by_hour_summary(date_str)
     
-    print(f"\n{'='*80}")
+    print(f"\n{'='*50}")
     print(f"Hour-by-Hour Summary - {date_str or 'Today'}")
-    print(f"{'='*80}")
+    print(f"{'='*50}")
     
     if not summary:
         print("No data found for this date")
         return
     
     # Print header
-    print(f"{'Hour':<6} {'Joins':<8} {'Leaves':<8} {'Net':<6} {'People':<8}")
-    print("-" * 80)
+    print(f"{'Hour':<6} {'People':<10}")
+    print("-" * 50)
     
     for row in summary:
         hour = f"{row['hour']:02d}:00"
-        joins = row['joins'] or 0
-        leaves = row['leaves'] or 0
-        net = row['net_change'] or 0
         people = row['unique_people'] or 0
         
-        print(f"{hour:<6} {joins:<8} {leaves:<8} {net:<6} {people:<8}")
+        print(f"{hour:<6} {people:<10}")
 
 
 def print_hour_by_hour_average(db, start_date_str=None, end_date_str=None):
@@ -540,7 +534,7 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
         fieldnames = ['Date', 'Hour', 'People']
     else:
         summary = query.get_hour_by_hour_summary(date_str)
-        fieldnames = ['Hour', 'Joins', 'Leaves', 'Net Change', 'Unique People']
+        fieldnames = ['Hour', 'People']
     
     if not summary:
         print("No data to export")
@@ -565,9 +559,6 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
             else:
                 writer.writerow([
                     f"{row['hour']:02d}:00",
-                    row['joins'] or 0,
-                    row['leaves'] or 0,
-                    row['net_change'] or 0,
                     row['unique_people'] or 0
                 ])
     
@@ -593,7 +584,7 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
         headers = ['Date', 'Hour', 'People']
     else:
         summary = query.get_hour_by_hour_summary(date_str)
-        headers = ['Hour', 'Joins', 'Leaves', 'Net Change', 'Unique People']
+        headers = ['Hour', 'People']
     
     if not summary:
         print("No data to export")
@@ -632,9 +623,6 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
         else:
             ws.append([
                 f"{row['hour']:02d}:00",
-                row['joins'] or 0,
-                row['leaves'] or 0,
-                row['net_change'] or 0,
                 row['unique_people'] or 0
             ])
     
@@ -656,12 +644,9 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
                 cell.alignment = Alignment(horizontal="center")
     else:
         ws.column_dimensions['A'].width = 10
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['B'].width = 15
         # Center align numeric columns
-        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=5):
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=2, max_col=2):
             for cell in row:
                 cell.alignment = Alignment(horizontal="center")
     
