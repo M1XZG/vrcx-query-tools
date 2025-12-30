@@ -146,6 +146,12 @@ This creates a report showing each week's attendance by day (Sunday through Satu
 - A separate bar chart for each individual week
 - A combined chart showing all weeks together in a single image for easy comparison
 
+**Example Combined Weekly Chart:**
+
+![Weekly Attendance Breakdown Example](docs/images/weekly_breakdown_example.png)
+
+The combined chart above shows 5 weeks of December attendance data with all weeks displayed in a 2-column grid layout, making it easy to compare patterns across the entire month at a glance and identify which weeks had the busiest days.
+
 #### Additional Options
 
 ```bash
