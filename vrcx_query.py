@@ -444,6 +444,84 @@ def print_daily_hourly_summary(db, start_date_str=None, end_date_str=None):
         current_date = date
 
 
+# ==============================================================================
+# Chart Generation Functions
+# ==============================================================================
+
+def create_average_chart(db, output_file, start_date_str=None, end_date_str=None):
+    """Create a bar chart showing average attendance by hour."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+    except ImportError:
+        print("WARNING: matplotlib not installed. Install with: pip install matplotlib")
+        return
+    
+    query = VRCXQuery(db)
+    summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+    
+    if not summary:
+        print("No data to chart")
+        return
+    
+    # Extract data
+    hours = [row['hour'] for row in summary]
+    avg_people = [row['avg_unique_people'] or 0 for row in summary]
+    
+    # Create chart
+    plt.figure(figsize=(10, 6))
+    plt.bar(hours, avg_people, color='#1f77b4', width=0.8)
+    plt.xlabel('Hour', fontsize=12)
+    plt.ylabel('Average People', fontsize=12)
+    plt.title('Average People by Hour', fontsize=14, fontweight='bold')
+    plt.xticks(hours, [f'{h:02d}' for h in hours])
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Chart saved to {output_file}")
+
+
+def create_daily_chart(db, output_file, date_str=None):
+    """Create a bar chart showing hourly attendance for a specific day."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+    except ImportError:
+        print("WARNING: matplotlib not installed. Install with: pip install matplotlib")
+        return
+    
+    query = VRCXQuery(db)
+    summary = query.get_hour_by_hour_summary(date_str)
+    
+    if not summary:
+        print("No data to chart")
+        return
+    
+    # Extract data
+    hours = [row['hour'] for row in summary]
+    people = [row['unique_people'] or 0 for row in summary]
+    
+    # Create chart
+    plt.figure(figsize=(10, 6))
+    plt.bar(hours, people, color='#1f77b4', width=0.8)
+    plt.xlabel('Hour', fontsize=12)
+    plt.ylabel('Unique People', fontsize=12)
+    plt.title(f'Hourly Attendance - {date_str}', fontsize=14, fontweight='bold')
+    plt.xticks(hours, [f'{h:02d}' for h in hours])
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"✓ Chart saved to {output_file}")
+
+
 def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False):
     """Export hour-by-hour data to CSV file."""
     try:
@@ -603,6 +681,7 @@ def main():
     parser.add_argument('--end-date', type=str, help='End date for range query (YYYY-MM-DD format)')
     parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
     parser.add_argument('--no-export', action='store_true', help='Skip exporting to CSV and Excel')
+    parser.add_argument('--chart', action='store_true', help='Generate chart visualization (PNG)')
     
     args = parser.parse_args()
     
@@ -663,6 +742,12 @@ def main():
                              end_date_str=args.end_date, is_average=True)
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
                                end_date_str=args.end_date, is_average=True)
+                
+                # Generate chart if requested
+                if args.chart:
+                    chart_file = output_dir / f"{filename_base}.png"
+                    create_average_chart(db, str(chart_file), args.start_date, args.end_date)
+                    
             elif is_date_range:
                 filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
                 csv_file = output_dir / f"{filename_base}.csv"
@@ -678,6 +763,11 @@ def main():
                 
                 export_to_csv(db, str(csv_file), args.date)
                 export_to_excel(db, str(xlsx_file), args.date)
+                
+                # Generate chart if requested
+                if args.chart:
+                    chart_file = output_dir / f"vrcx_hourly_{args.date}.png"
+                    create_daily_chart(db, str(chart_file), args.date)
             
             print(f"\n✓ All exports completed in {output_dir}/")
         

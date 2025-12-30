@@ -6,4 +6,7 @@ python-dotenv==1.0.0
 # Excel export support
 openpyxl==3.1.2
 
+# Chart generation
+matplotlib==3.8.2
+
 # Note: sqlite3 and csv modules are included with Python standard library

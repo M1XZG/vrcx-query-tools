@@ -122,9 +122,14 @@ This shows the average number of people joining/leaving at each hour, useful for
 # Skip exporting to files
 python vrcx_query.py --date 2025-12-25 --no-export
 
+# Generate a chart (PNG image)
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --chart
+
 # Combine options
 python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --no-export
 ```
+
+The `--chart` flag creates a bar chart visualization showing average attendance by hour.
 
 ### Available Query Functions
 
@@ -139,15 +144,21 @@ The `VRCXQuery` class provides several methods:
 
 ### Export Formats
 
-The script exports data in two formats:
-- **CSV:** 
+The script exports data in multiple formats:
+
+**Data Files:**
+- **CSV:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.csv`
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.csv`
-- **Excel:** 
+- **Excel:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx`
   - Date range: `vrcx_exports/vrcx_daily_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.xlsx`
+
+**Charts (when using `--chart` flag):**
+- Average attendance: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.png`
+- Daily attendance: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.png`
 
 ## Documentation
 
