@@ -156,6 +156,28 @@ This creates a report showing each week's attendance by day (Sunday through Satu
 
 The combined chart above shows 5 weeks of December attendance data with all weeks displayed in a 2-column grid layout, making it easy to compare patterns across the entire month at a glance and identify which weeks had the busiest days.
 
+#### Unique Visitors Mode
+
+Count each visitor only once per day, ignoring multiple join/leave events:
+
+```bash
+# Get unique visitor count for a specific date
+python vrcx_query.py --date 2025-12-25 --unique
+
+# Average unique visitors per hour across a date range
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --unique
+
+# Unique visitors by day of week
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique
+
+# Week-by-week unique visitor breakdown
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly --unique
+```
+
+The `--unique` flag is useful for understanding visitor traffic instead of total join/leave events. When enabled, each person is counted only once per day, regardless of how many times they joined or left the instance.
+
+**Example:** If a user joins at 10 AM, leaves at 11 AM, and rejoins at 2 PM, they'll be counted as 1 unique visitor for the day instead of 2.
+
 #### Additional Options
 
 ```bash
@@ -167,22 +189,30 @@ python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --c
 
 # Combine options
 python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --no-export
+
+# Unique visitors with chart
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique --chart
+
+# Show verbose database information
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --verbose
 ```
 
-The `--chart` flag creates a bar chart visualization showing average attendance by hour.
+The `--chart` flag creates a bar chart visualization showing average attendance by hour. The `--verbose` flag displays database table names and other technical information during execution.
 
 ### Command-Line Options
 
 | Option | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `--date YYYY-MM-DD` | Query a specific date |
 | `--start-date YYYY-MM-DD` | Start date for range query |
 | `--end-date YYYY-MM-DD` | End date for range query |
 | `--average` | Calculate average attendance across date range (hourly) |
 | `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
 | `--weekly` | Show week-by-week breakdown with day-of-week attendance |
+| `--unique` | Count unique visitors only once per day (ignores multiple join/leave events) |
 | `--no-export` | Skip exporting to CSV and Excel files |
 | `--chart` | Generate chart visualization (PNG image) |
+| `--verbose` | Show verbose output including database table information |
 
 ### Available Query Functions
 

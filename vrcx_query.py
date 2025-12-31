@@ -25,6 +25,21 @@ from pathlib import Path
 import json
 import argparse
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # If python-dotenv is not installed, manually load .env file
+    env_path = Path(__file__).parent / '.env'
+    if env_path.exists():
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+
 # ==============================================================================
 # Configuration
 # ==============================================================================
@@ -229,9 +244,10 @@ class VRCXQuery:
     def get_hour_by_hour_average(self, start_date_str=None, end_date_str=None):
         """
         Get average hour-by-hour attendance across a date range.
+        Counts total join/leave events per hour.
         
         Returns average data like:
-        Hour | Avg Unique People
+        Hour | Avg People
         """
         if start_date_str is None:
             start_date_str = datetime.now().strftime('%Y-%m-%d')
@@ -241,12 +257,12 @@ class VRCXQuery:
         query = """
         SELECT 
             hour,
-            CAST(ROUND(AVG(unique_people)) AS INTEGER) as avg_unique_people
+            CAST(ROUND(AVG(total_people)) AS INTEGER) as avg_unique_people
         FROM (
             SELECT 
                 DATE(created_at) as date,
                 CAST(strftime('%H', created_at) AS INTEGER) as hour,
-                COUNT(DISTINCT display_name) as unique_people
+                COUNT(*) as total_people
             FROM gamelog_join_leave
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at), hour
@@ -261,9 +277,10 @@ class VRCXQuery:
     def get_daily_hourly_summary(self, start_date_str=None, end_date_str=None):
         """
         Get hour-by-hour summary for each day in a date range.
+        Counts total join/leave events.
         
         Returns data like:
-        Date | Hour | Unique People
+        Date | Hour | People
         """
         if start_date_str is None:
             start_date_str = datetime.now().strftime('%Y-%m-%d')
@@ -274,7 +291,7 @@ class VRCXQuery:
         SELECT 
             DATE(created_at) as date,
             CAST(strftime('%H', created_at) AS INTEGER) as hour,
-            COUNT(DISTINCT display_name) as unique_people
+            COUNT(*) as unique_people
         FROM gamelog_join_leave
         WHERE DATE(created_at) BETWEEN ? AND ?
         GROUP BY DATE(created_at), hour
@@ -287,9 +304,10 @@ class VRCXQuery:
     def get_day_of_week_average(self, start_date_str=None, end_date_str=None):
         """
         Get average attendance by day of week.
+        Counts total join/leave events per day.
         
         Returns data like:
-        Day of Week | Avg Unique People
+        Day of Week | Avg People
         """
         if start_date_str is None:
             start_date_str = datetime.now().strftime('%Y-%m-%d')
@@ -299,11 +317,11 @@ class VRCXQuery:
         query = """
         SELECT 
             CAST(strftime('%w', date) AS INTEGER) as day_of_week,
-            ROUND(AVG(unique_people)) as avg_unique_people
+            ROUND(AVG(total_people)) as avg_unique_people
         FROM (
             SELECT 
                 DATE(created_at) as date,
-                COUNT(DISTINCT display_name) as unique_people
+                COUNT(*) as total_people
             FROM gamelog_join_leave
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at)
@@ -318,9 +336,10 @@ class VRCXQuery:
     def get_weekly_day_of_week_breakdown(self, start_date_str=None, end_date_str=None):
         """
         Get attendance by day of week, grouped by week.
+        Counts total join/leave events per day.
         
         Returns data like:
-        Week Start | Week End | Day of Week | Unique People
+        Week Start | Week End | Day of Week | People
         """
         if start_date_str is None:
             start_date_str = datetime.now().strftime('%Y-%m-%d')
@@ -349,7 +368,7 @@ class VRCXQuery:
                 END as day_name,
                 DATE(created_at, 'weekday 0', '-6 days') as week_start,
                 DATE(created_at, 'weekday 0') as week_end,
-                COUNT(DISTINCT display_name) as unique_people
+                COUNT(*) as unique_people
             FROM gamelog_join_leave
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at)
@@ -409,6 +428,168 @@ class VRCXQuery:
         """
         
         results = self.db.execute(query, (date_str,))
+        return results
+    
+    def get_unique_visitors_by_hour(self, date_str=None):
+        """
+        Get unique visitors per hour for a specific date.
+        Each person is counted only once per hour, regardless of how many times they joined/left.
+        
+        Returns data like:
+        Hour | Unique Visitors
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        query = """
+        SELECT 
+            CAST(strftime('%H', created_at) AS INTEGER) as hour,
+            COUNT(DISTINCT display_name) as unique_visitors
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) = ?
+        GROUP BY hour
+        ORDER BY hour ASC
+        """
+        
+        results = self.db.execute(query, (date_str,))
+        return results
+    
+    def get_unique_visitors_daily(self, start_date_str=None, end_date_str=None):
+        """
+        Get unique visitors per day across a date range.
+        Each person is counted only once per day, regardless of how many times they joined/left.
+        
+        Returns data like:
+        Date | Unique Visitors
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            DATE(created_at) as date,
+            COUNT(DISTINCT display_name) as unique_visitors
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ?
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at) ASC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
+    def get_unique_visitors_average(self, start_date_str=None, end_date_str=None):
+        """
+        Get average unique visitors per hour across a date range.
+        Each person is counted only once per hour per day.
+        
+        Returns data like:
+        Hour | Avg Unique Visitors
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            hour,
+            CAST(ROUND(AVG(unique_visitors)) AS INTEGER) as avg_unique_visitors
+        FROM (
+            SELECT 
+                DATE(created_at) as date,
+                CAST(strftime('%H', created_at) AS INTEGER) as hour,
+                COUNT(DISTINCT display_name) as unique_visitors
+            FROM gamelog_join_leave
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at), hour
+        )
+        GROUP BY hour
+        ORDER BY hour ASC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
+    def get_unique_visitors_day_of_week(self, start_date_str=None, end_date_str=None):
+        """
+        Get average unique visitors by day of week across a date range.
+        Each person is counted only once per day.
+        
+        Returns data like:
+        Day of Week | Avg Unique Visitors
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            CAST(strftime('%w', date) AS INTEGER) as day_of_week,
+            ROUND(AVG(unique_visitors)) as avg_unique_visitors
+        FROM (
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(DISTINCT display_name) as unique_visitors
+            FROM gamelog_join_leave
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at)
+        )
+        GROUP BY day_of_week
+        ORDER BY day_of_week
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
+    def get_unique_visitors_weekly(self, start_date_str=None, end_date_str=None):
+        """
+        Get unique visitors by day of week, grouped by week.
+        Each person is counted only once per day.
+        
+        Returns data like:
+        Week Start | Week End | Day of Week | Unique Visitors
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            week_start,
+            week_end,
+            day_of_week,
+            day_name,
+            unique_visitors
+        FROM (
+            SELECT 
+                DATE(created_at) as date,
+                CAST(strftime('%w', created_at) AS INTEGER) as day_of_week,
+                CASE CAST(strftime('%w', created_at) AS INTEGER)
+                    WHEN 0 THEN 'Sunday'
+                    WHEN 1 THEN 'Monday'
+                    WHEN 2 THEN 'Tuesday'
+                    WHEN 3 THEN 'Wednesday'
+                    WHEN 4 THEN 'Thursday'
+                    WHEN 5 THEN 'Friday'
+                    WHEN 6 THEN 'Saturday'
+                END as day_name,
+                DATE(created_at, 'weekday 0', '-6 days') as week_start,
+                DATE(created_at, 'weekday 0') as week_end,
+                COUNT(DISTINCT display_name) as unique_visitors
+            FROM gamelog_join_leave
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at)
+        )
+        GROUP BY week_start, week_end, day_of_week, day_name, date
+        ORDER BY week_start, day_of_week
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
         return results
 
 
@@ -581,7 +762,7 @@ def print_weekly_day_of_week_breakdown(db, start_date_str=None, end_date_str=Non
 # Chart Generation Functions
 # ==============================================================================
 
-def create_average_chart(db, output_file, start_date_str=None, end_date_str=None):
+def create_average_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Average Hourly Attendance - All Visitors', is_unique=False):
     """Create a bar chart showing average attendance by hour."""
     try:
         import matplotlib.pyplot as plt
@@ -592,7 +773,10 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
         return
     
     query = VRCXQuery(db)
-    summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+    if is_unique:
+        summary = query.get_unique_visitors_average(start_date_str, end_date_str)
+    else:
+        summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
     
     if not summary:
         print("No data to chart")
@@ -600,25 +784,35 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
     
     # Extract data
     hours = [row['hour'] for row in summary]
-    avg_people = [row['avg_unique_people'] or 0 for row in summary]
+    
+    # Get the correct column name based on whether it's unique or not
+    if is_unique:
+        avg_people = [row['avg_unique_visitors'] or 0 for row in summary]
+    else:
+        avg_people = [row['avg_unique_people'] or 0 for row in summary]
     
     # Create chart
-    plt.figure(figsize=(10, 6))
-    plt.bar(hours, avg_people, color='#1f77b4', width=0.8)
-    plt.xlabel('Hour', fontsize=12)
-    plt.ylabel('Average People', fontsize=12)
-    plt.title('Average People by Hour', fontsize=14, fontweight='bold')
-    plt.xticks(hours, [f'{h:02d}' for h in hours])
-    plt.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.bar(hours, avg_people, color='#1f77b4', width=0.8)
+    ax.set_xlabel('Hour', fontsize=12)
+    ax.set_ylabel('Average People', fontsize=12)
+    ax.set_title('Average People by Hour', fontsize=14, fontweight='bold')
+    ax.set_xticks(hours)
+    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.grid(axis='y', alpha=0.3)
     
+    # Add info box at bottom
+    fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10, 
+             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+    
+    plt.subplots_adjust(bottom=0.12)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Chart saved to {output_file}")
 
 
-def create_daily_chart(db, output_file, date_str=None):
+def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Attendance - All Visitors', is_unique=False):
     """Create a bar chart showing hourly attendance for a specific day."""
     try:
         import matplotlib.pyplot as plt
@@ -640,22 +834,27 @@ def create_daily_chart(db, output_file, date_str=None):
     people = [row['unique_people'] or 0 for row in summary]
     
     # Create chart
-    plt.figure(figsize=(10, 6))
-    plt.bar(hours, people, color='#1f77b4', width=0.8)
-    plt.xlabel('Hour', fontsize=12)
-    plt.ylabel('Unique People', fontsize=12)
-    plt.title(f'Hourly Attendance - {date_str}', fontsize=14, fontweight='bold')
-    plt.xticks(hours, [f'{h:02d}' for h in hours])
-    plt.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.bar(hours, people, color='#1f77b4', width=0.8)
+    ax.set_xlabel('Hour', fontsize=12)
+    ax.set_ylabel('Unique People', fontsize=12)
+    ax.set_title(f'Hourly Attendance - {date_str}', fontsize=14, fontweight='bold')
+    ax.set_xticks(hours)
+    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.grid(axis='y', alpha=0.3)
     
+    # Add info box at bottom
+    fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+    
+    plt.subplots_adjust(bottom=0.12)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Chart saved to {output_file}")
 
 
-def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None):
+def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Day of Week - All Visitors', is_unique=False):
     """Create a bar chart showing average attendance by day of week."""
     try:
         import matplotlib.pyplot as plt
@@ -666,7 +865,10 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
         return
     
     query = VRCXQuery(db)
-    summary = query.get_day_of_week_average(start_date_str, end_date_str)
+    if is_unique:
+        summary = query.get_unique_visitors_day_of_week(start_date_str, end_date_str)
+    else:
+        summary = query.get_day_of_week_average(start_date_str, end_date_str)
     
     if not summary:
         print("No data to chart")
@@ -675,29 +877,38 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     # Days of week (Sunday=0 to Saturday=6 in SQLite)
     days_full = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     
-    # Extract data
+    # Extract data - handle both column names
     day_indices = [row['day_of_week'] for row in summary]
     day_names = [days_full[idx] for idx in day_indices]
-    avg_people = [row['avg_unique_people'] or 0 for row in summary]
+    
+    # Get the correct column name based on whether it's unique or not
+    if is_unique:
+        avg_people = [row['avg_unique_visitors'] or 0 for row in summary]
+    else:
+        avg_people = [row['avg_unique_people'] or 0 for row in summary]
     
     # Create chart
-    plt.figure(figsize=(10, 6))
-    plt.bar(day_names, avg_people, color='#2ca02c', width=0.6)
-    plt.xlabel('Day of Week', fontsize=12)
-    plt.ylabel('Average Unique People', fontsize=12)
-    plt.title(f'Average Attendance by Day of Week\n{start_date_str} to {end_date_str or start_date_str}', 
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.bar(day_names, avg_people, color='#2ca02c', width=0.6)
+    ax.set_xlabel('Day of Week', fontsize=12)
+    ax.set_ylabel('Average Unique People', fontsize=12)
+    ax.set_title(f'Average Attendance by Day of Week\n{start_date_str} to {end_date_str or start_date_str}', 
               fontsize=14, fontweight='bold')
-    plt.xticks(rotation=45, ha='right')
-    plt.grid(axis='y', alpha=0.3)
-    plt.tight_layout()
+    ax.tick_params(axis='x', rotation=45)
+    ax.grid(axis='y', alpha=0.3)
     
+    # Add info box at bottom
+    fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+    
+    plt.subplots_adjust(bottom=0.15)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Chart saved to {output_file}")
 
 
-def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None):
+def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
     """Create separate bar charts for each week showing day-of-week attendance."""
     try:
         import matplotlib.pyplot as plt
@@ -709,7 +920,10 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None)
     
     from pathlib import Path
     query = VRCXQuery(db)
-    summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
+    if is_unique:
+        summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
+    else:
+        summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
     
     if not summary:
         print("No data to chart")
@@ -724,7 +938,15 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None)
         week_key = (row['week_start'], row['week_end'])
         if week_key not in weeks:
             weeks[week_key] = {}
-        weeks[week_key][row['day_of_week']] = row['unique_people'] or 0
+        # Get the correct column name (sqlite3.Row doesn't have .get() method)
+        try:
+            people_count = row['unique_visitors']
+        except (KeyError, IndexError):
+            try:
+                people_count = row['unique_people']
+            except (KeyError, IndexError):
+                people_count = 0
+        weeks[week_key][row['day_of_week']] = people_count or 0
     
     # Create a chart for each week
     chart_files = []
@@ -735,15 +957,20 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None)
         people = [week_data[idx] for idx in day_indices]
         
         # Create chart
-        plt.figure(figsize=(10, 6))
-        plt.bar(day_names, people, color='#ff7f0e', width=0.6)
-        plt.xlabel('Day of Week', fontsize=12)
-        plt.ylabel('Unique People', fontsize=12)
-        plt.title(f'Weekly Attendance: {week_start} to {week_end}', 
+        fig, ax = plt.subplots(figsize=(10, 7))
+        ax.bar(day_names, people, color='#ff7f0e', width=0.6)
+        ax.set_xlabel('Day of Week', fontsize=12)
+        ax.set_ylabel('Unique People', fontsize=12)
+        ax.set_title(f'Weekly Attendance: {week_start} to {week_end}', 
                   fontsize=14, fontweight='bold')
-        plt.xticks(rotation=45, ha='right')
-        plt.grid(axis='y', alpha=0.3)
-        plt.tight_layout()
+        ax.tick_params(axis='x', rotation=45)
+        ax.grid(axis='y', alpha=0.3)
+        
+        # Add info box at bottom
+        fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
+                 bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+        
+        plt.subplots_adjust(bottom=0.15)
         
         # Save chart
         output_file = Path(output_dir) / f"vrcx_week_{week_start}_to_{week_end}.png"
@@ -756,7 +983,7 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None)
     return chart_files
 
 
-def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_str=None):
+def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
     """Create a single combined chart with all weeks as subplots."""
     try:
         import matplotlib.pyplot as plt
@@ -770,7 +997,10 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
     import math
     
     query = VRCXQuery(db)
-    summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
+    if is_unique:
+        summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
+    else:
+        summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
     
     if not summary:
         print("No data to chart")
@@ -785,7 +1015,15 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
         week_key = (row['week_start'], row['week_end'])
         if week_key not in weeks:
             weeks[week_key] = {}
-        weeks[week_key][row['day_of_week']] = row['unique_people'] or 0
+        # Get the correct column name (sqlite3.Row doesn't have .get() method)
+        try:
+            people_count = row['unique_visitors']
+        except (KeyError, IndexError):
+            try:
+                people_count = row['unique_people']
+            except (KeyError, IndexError):
+                people_count = 0
+        weeks[week_key][row['day_of_week']] = people_count or 0
     
     num_weeks = len(weeks)
     if num_weeks == 0:
@@ -796,8 +1034,8 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
     cols = 2 if num_weeks > 1 else 1
     rows = math.ceil(num_weeks / cols)
     
-    # Create figure with subplots
-    fig, axes = plt.subplots(rows, cols, figsize=(15, 5 * rows))
+    # Create figure with subplots (reserve space for info box at bottom)
+    fig, axes = plt.subplots(rows, cols, figsize=(15, 5 * rows + 0.8))
     
     # Flatten axes array for easier iteration
     if num_weeks == 1:
@@ -828,16 +1066,20 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
     
     # Overall title
     fig.suptitle(f'Weekly Attendance Breakdown: {start_date_str} to {end_date_str or start_date_str}',
-                 fontsize=16, fontweight='bold', y=0.995)
+                 fontsize=16, fontweight='bold', y=0.99)
     
-    plt.tight_layout()
+    # Add info box at bottom
+    fig.text(0.5, 0.01, chart_label, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+    
+    plt.subplots_adjust(bottom=0.08)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
     print(f"✓ Combined chart saved to {output_file}")
 
 
-def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False):
+def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
     """Export hour-by-hour data to CSV file."""
     try:
         import csv
@@ -847,22 +1089,40 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
     
     query = VRCXQuery(db)
     
-    if is_weekly:
-        summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
-        fieldnames = ['Week Start', 'Week End', 'Day of Week', 'People']
-    elif is_day_of_week:
-        summary = query.get_day_of_week_average(start_date_str, end_date_str)
-        fieldnames = ['Day of Week', 'Avg People']
-        days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    elif is_average:
-        summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
-        fieldnames = ['Hour', 'Avg People']
-    elif is_daily:
-        summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
-        fieldnames = ['Date', 'Hour', 'People']
+    if is_unique:
+        if is_weekly:
+            summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
+            fieldnames = ['Week Start', 'Week End', 'Day of Week', 'Unique Visitors']
+        elif is_day_of_week:
+            summary = query.get_unique_visitors_day_of_week(start_date_str, end_date_str)
+            fieldnames = ['Day of Week', 'Avg Unique Visitors']
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        elif is_average:
+            summary = query.get_unique_visitors_average(start_date_str, end_date_str)
+            fieldnames = ['Hour', 'Avg Unique Visitors']
+        elif is_daily:
+            summary = query.get_unique_visitors_daily(start_date_str, end_date_str)
+            fieldnames = ['Date', 'Unique Visitors']
+        else:
+            summary = query.get_unique_visitors_by_hour(date_str)
+            fieldnames = ['Hour', 'Unique Visitors']
     else:
-        summary = query.get_hour_by_hour_summary(date_str)
-        fieldnames = ['Hour', 'People']
+        if is_weekly:
+            summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
+            fieldnames = ['Week Start', 'Week End', 'Day of Week', 'People']
+        elif is_day_of_week:
+            summary = query.get_day_of_week_average(start_date_str, end_date_str)
+            fieldnames = ['Day of Week', 'Avg People']
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        elif is_average:
+            summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+            fieldnames = ['Hour', 'Avg People']
+        elif is_daily:
+            summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
+            fieldnames = ['Date', 'Hour', 'People']
+        else:
+            summary = query.get_hour_by_hour_summary(date_str)
+            fieldnames = ['Hour', 'People']
     
     if not summary:
         print("No data to export")
@@ -873,39 +1133,68 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
         writer.writerow(fieldnames)
         
         for row in summary:
-            if is_weekly:
-                writer.writerow([
-                    row['week_start'],
-                    row['week_end'],
-                    row['day_name'],
-                    row['unique_people'] or 0
-                ])
-            elif is_day_of_week:
-                writer.writerow([
-                    days[row['day_of_week']],
-                    row['avg_unique_people'] or 0
-                ])
-            elif is_average:
-                writer.writerow([
-                    f"{row['hour']:02d}:00",
-                    row['avg_unique_people'] or 0
-                ])
-            elif is_daily:
-                writer.writerow([
-                    row['date'],
-                    f"{row['hour']:02d}:00",
-                    row['unique_people'] or 0
-                ])
+            if is_unique:
+                if is_weekly:
+                    writer.writerow([
+                        row['week_start'],
+                        row['week_end'],
+                        row['day_name'],
+                        row['unique_visitors'] or 0
+                    ])
+                elif is_day_of_week:
+                    writer.writerow([
+                        days[row['day_of_week']],
+                        row['avg_unique_visitors'] or 0
+                    ])
+                elif is_average:
+                    writer.writerow([
+                        f"{row['hour']:02d}:00",
+                        row['avg_unique_visitors'] or 0
+                    ])
+                elif is_daily:
+                    writer.writerow([
+                        row['date'],
+                        row['unique_visitors'] or 0
+                    ])
+                else:
+                    writer.writerow([
+                        f"{row['hour']:02d}:00",
+                        row['unique_visitors'] or 0
+                    ])
             else:
-                writer.writerow([
-                    f"{row['hour']:02d}:00",
-                    row['unique_people'] or 0
-                ])
+                if is_weekly:
+                    writer.writerow([
+                        row['week_start'],
+                        row['week_end'],
+                        row['day_name'],
+                        row['unique_people'] or 0
+                    ])
+                elif is_day_of_week:
+                    writer.writerow([
+                        days[row['day_of_week']],
+                        row['avg_unique_people'] or 0
+                    ])
+                elif is_average:
+                    writer.writerow([
+                        f"{row['hour']:02d}:00",
+                        row['avg_unique_people'] or 0
+                    ])
+                elif is_daily:
+                    writer.writerow([
+                        row['date'],
+                        f"{row['hour']:02d}:00",
+                        row['unique_people'] or 0
+                    ])
+                else:
+                    writer.writerow([
+                        f"{row['hour']:02d}:00",
+                        row['unique_people'] or 0
+                    ])
     
     print(f"✓ Exported to {output_file}")
 
 
-def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False):
+def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
     """Export hour-by-hour data to Excel file."""
     try:
         import openpyxl
@@ -916,22 +1205,40 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
     
     query = VRCXQuery(db)
     
-    if is_weekly:
-        summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
-        headers = ['Week Start', 'Week End', 'Day of Week', 'People']
-    elif is_day_of_week:
-        summary = query.get_day_of_week_average(start_date_str, end_date_str)
-        headers = ['Day of Week', 'Avg People']
-        days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    elif is_average:
-        summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
-        headers = ['Hour', 'Avg People']
-    elif is_daily:
-        summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
-        headers = ['Date', 'Hour', 'People']
+    if is_unique:
+        if is_weekly:
+            summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
+            headers = ['Week Start', 'Week End', 'Day of Week', 'Unique Visitors']
+        elif is_day_of_week:
+            summary = query.get_unique_visitors_day_of_week(start_date_str, end_date_str)
+            headers = ['Day of Week', 'Avg Unique Visitors']
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        elif is_average:
+            summary = query.get_unique_visitors_average(start_date_str, end_date_str)
+            headers = ['Hour', 'Avg Unique Visitors']
+        elif is_daily:
+            summary = query.get_unique_visitors_daily(start_date_str, end_date_str)
+            headers = ['Date', 'Unique Visitors']
+        else:
+            summary = query.get_unique_visitors_by_hour(date_str)
+            headers = ['Hour', 'Unique Visitors']
     else:
-        summary = query.get_hour_by_hour_summary(date_str)
-        headers = ['Hour', 'People']
+        if is_weekly:
+            summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
+            headers = ['Week Start', 'Week End', 'Day of Week', 'People']
+        elif is_day_of_week:
+            summary = query.get_day_of_week_average(start_date_str, end_date_str)
+            headers = ['Day of Week', 'Avg People']
+            days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        elif is_average:
+            summary = query.get_hour_by_hour_average(start_date_str, end_date_str)
+            headers = ['Hour', 'Avg People']
+        elif is_daily:
+            summary = query.get_daily_hourly_summary(start_date_str, end_date_str)
+            headers = ['Date', 'Hour', 'People']
+        else:
+            summary = query.get_hour_by_hour_summary(date_str)
+            headers = ['Hour', 'People']
     
     if not summary:
         print("No data to export")
@@ -956,34 +1263,63 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
     
     # Add data rows
     for row in summary:
-        if is_weekly:
-            ws.append([
-                row['week_start'],
-                row['week_end'],
-                row['day_name'],
-                row['unique_people'] or 0
-            ])
-        elif is_day_of_week:
-            ws.append([
-                days[row['day_of_week']],
-                row['avg_unique_people'] or 0
-            ])
-        elif is_average:
-            ws.append([
-                f"{row['hour']:02d}:00",
-                row['avg_unique_people'] or 0
-            ])
-        elif is_daily:
-            ws.append([
-                row['date'],
-                f"{row['hour']:02d}:00",
-                row['unique_people'] or 0
-            ])
+        if is_unique:
+            if is_weekly:
+                ws.append([
+                    row['week_start'],
+                    row['week_end'],
+                    row['day_name'],
+                    row['unique_visitors'] or 0
+                ])
+            elif is_day_of_week:
+                ws.append([
+                    days[row['day_of_week']],
+                    row['avg_unique_visitors'] or 0
+                ])
+            elif is_average:
+                ws.append([
+                    f"{row['hour']:02d}:00",
+                    row['avg_unique_visitors'] or 0
+                ])
+            elif is_daily:
+                ws.append([
+                    row['date'],
+                    row['unique_visitors'] or 0
+                ])
+            else:
+                ws.append([
+                    f"{row['hour']:02d}:00",
+                    row['unique_visitors'] or 0
+                ])
         else:
-            ws.append([
-                f"{row['hour']:02d}:00",
-                row['unique_people'] or 0
-            ])
+            if is_weekly:
+                ws.append([
+                    row['week_start'],
+                    row['week_end'],
+                    row['day_name'],
+                    row['unique_people'] or 0
+                ])
+            elif is_day_of_week:
+                ws.append([
+                    days[row['day_of_week']],
+                    row['avg_unique_people'] or 0
+                ])
+            elif is_average:
+                ws.append([
+                    f"{row['hour']:02d}:00",
+                    row['avg_unique_people'] or 0
+                ])
+            elif is_daily:
+                ws.append([
+                    row['date'],
+                    f"{row['hour']:02d}:00",
+                    row['unique_people'] or 0
+                ])
+            else:
+                ws.append([
+                    f"{row['hour']:02d}:00",
+                    row['unique_people'] or 0
+                ])
     
     # Adjust column widths
     if is_weekly:
@@ -1042,8 +1378,10 @@ def main():
     parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
     parser.add_argument('--day-of-week', action='store_true', help='Show average attendance by day of week (Monday-Sunday)')
     parser.add_argument('--weekly', action='store_true', help='Show week-by-week breakdown with day-of-week attendance')
+    parser.add_argument('--unique', action='store_true', help='Count unique visitors only once per day (ignores join/leave counts)')
     parser.add_argument('--no-export', action='store_true', help='Skip exporting to CSV and Excel')
     parser.add_argument('--chart', action='store_true', help='Generate chart visualization (PNG)')
+    parser.add_argument('--verbose', action='store_true', help='Show verbose output including database table information')
     
     args = parser.parse_args()
     
@@ -1077,11 +1415,12 @@ def main():
     db.connect()
     
     try:
-        # Show available tables
-        print(f"\nAvailable tables:")
-        tables = db.get_table_names()
-        for table in tables:
-            print(f"  - {table}")
+        # Show available tables (if verbose)
+        if args.verbose:
+            print(f"\nAvailable tables:")
+            tables = db.get_table_names()
+            for table in tables:
+                print(f"  - {table}")
         
         # Run queries
         print("\n" + "="*80)
@@ -1111,74 +1450,91 @@ def main():
             
             if args.weekly:
                 filename_base = f"vrcx_weekly_{args.start_date}_to_{args.end_date}"
+                if args.unique:
+                    filename_base += "_unique"
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
                 export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_weekly=True)
+                             end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_weekly=True)
+                               end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
                 
                 # Generate charts if requested (one per week)
                 if args.chart:
+                    # Determine chart label based on unique flag
+                    chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
+                    
                     # Create individual weekly charts
-                    chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date)
+                    chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
                     print(f"✓ Created {len(chart_files)} individual weekly charts")
                     
                     # Create combined chart with all weeks
                     combined_chart = output_dir / f"{filename_base}_combined.png"
-                    create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date)
+                    create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique)
                 
             elif args.day_of_week:
                 filename_base = f"vrcx_day_of_week_{args.start_date}_to_{args.end_date}"
+                if args.unique:
+                    filename_base += "_unique"
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
                 export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_day_of_week=True)
+                             end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_day_of_week=True)
+                               end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
                 
                 # Generate chart if requested
                 if args.chart:
+                    chart_label = "Day of Week - Unique Visitors" if args.unique else "Day of Week - All Visitors"
                     chart_file = output_dir / f"{filename_base}.png"
-                    create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date)
+                    create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
                 
             elif args.average:
                 filename_base = f"vrcx_average_{args.start_date}_to_{args.end_date}"
+                if args.unique:
+                    filename_base += "_unique"
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
                 export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_average=True)
+                             end_date_str=args.end_date, is_average=True, is_unique=args.unique)
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_average=True)
+                               end_date_str=args.end_date, is_average=True, is_unique=args.unique)
                 
                 # Generate chart if requested
                 if args.chart:
+                    chart_label = "Average Hourly Attendance - Unique Visitors" if args.unique else "Average Hourly Attendance - All Visitors"
                     chart_file = output_dir / f"{filename_base}.png"
-                    create_average_chart(db, str(chart_file), args.start_date, args.end_date)
+                    create_average_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
                     
             elif is_date_range:
                 filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
+                if args.unique:
+                    filename_base += "_unique"
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
                 export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_daily=True)
+                             end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_daily=True)
+                               end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
             else:
-                csv_file = output_dir / f"vrcx_hourly_{args.date}.csv"
-                xlsx_file = output_dir / f"vrcx_hourly_{args.date}.xlsx"
+                filename_base = f"vrcx_hourly_{args.date}"
+                if args.unique:
+                    filename_base += "_unique"
+                csv_file = output_dir / f"{filename_base}.csv"
+                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), args.date)
-                export_to_excel(db, str(xlsx_file), args.date)
+                export_to_csv(db, str(csv_file), date_str=args.date, is_unique=args.unique)
+                export_to_excel(db, str(xlsx_file), date_str=args.date, is_unique=args.unique)
                 
                 # Generate chart if requested
                 if args.chart:
-                    chart_file = output_dir / f"vrcx_hourly_{args.date}.png"
-                    create_daily_chart(db, str(chart_file), args.date)
+                    chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
+                    chart_file = output_dir / f"{filename_base}.png"
+                    create_daily_chart(db, str(chart_file), args.date, chart_label, args.unique)
             
             print(f"\n✓ All exports completed in {output_dir}/")
         
