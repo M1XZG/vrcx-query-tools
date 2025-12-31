@@ -1379,8 +1379,7 @@ def main():
     parser.add_argument('--day-of-week', action='store_true', help='Show average attendance by day of week (Monday-Sunday)')
     parser.add_argument('--weekly', action='store_true', help='Show week-by-week breakdown with day-of-week attendance')
     parser.add_argument('--unique', action='store_true', help='Count unique visitors only once per day (ignores join/leave counts)')
-    parser.add_argument('--no-export', action='store_true', help='Skip exporting to CSV and Excel')
-    parser.add_argument('--chart', action='store_true', help='Generate chart visualization (PNG)')
+    parser.add_argument('--export-data', action='store_true', help='Export data to CSV and Excel files')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output including database table information')
     
     args = parser.parse_args()
@@ -1439,104 +1438,114 @@ def main():
             print_location_history(db, args.date)
             print_hour_by_hour_summary(db, args.date)
         
-        # Export to files
-        if not args.no_export:
+        # Export charts (always generated)
+        output_dir = Path(os.getenv('VRCX_REPORTS_OUTPUT_PATH', './vrcx_exports'))
+        output_dir.mkdir(exist_ok=True)
+        
+        print(f"\n{'='*80}")
+        print("GENERATING CHARTS")
+        print(f"{'='*80}")
+        
+        # Export data files if requested
+        if args.export_data:
             print(f"\n{'='*80}")
             print("EXPORTING DATA")
             print(f"{'='*80}")
-            
-            output_dir = Path(os.getenv('VRCX_REPORTS_OUTPUT_PATH', './vrcx_exports'))
-            output_dir.mkdir(exist_ok=True)
             
             if args.weekly:
                 filename_base = f"vrcx_weekly_{args.start_date}_to_{args.end_date}"
                 if args.unique:
                     filename_base += "_unique"
-                csv_file = output_dir / f"{filename_base}.csv"
-                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
-                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
+                # Generate charts (always)
+                chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
+                chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
+                print(f"✓ Created {len(chart_files)} individual weekly charts")
+                combined_chart = output_dir / f"{filename_base}_combined.png"
+                create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique)
                 
-                # Generate charts if requested (one per week)
-                if args.chart:
-                    # Determine chart label based on unique flag
-                    chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
-                    
-                    # Create individual weekly charts
-                    chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
-                    print(f"✓ Created {len(chart_files)} individual weekly charts")
-                    
-                    # Create combined chart with all weeks
-                    combined_chart = output_dir / f"{filename_base}_combined.png"
-                    create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique)
+                # Export data if requested
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    xlsx_file = output_dir / f"{filename_base}.xlsx"
+                    export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                                 end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
+                    export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                                   end_date_str=args.end_date, is_weekly=True, is_unique=args.unique)
                 
             elif args.day_of_week:
                 filename_base = f"vrcx_day_of_week_{args.start_date}_to_{args.end_date}"
                 if args.unique:
                     filename_base += "_unique"
-                csv_file = output_dir / f"{filename_base}.csv"
-                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
-                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
+                # Generate chart (always)
+                chart_label = "Day of Week - Unique Visitors" if args.unique else "Day of Week - All Visitors"
+                chart_file = output_dir / f"{filename_base}.png"
+                create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
                 
-                # Generate chart if requested
-                if args.chart:
-                    chart_label = "Day of Week - Unique Visitors" if args.unique else "Day of Week - All Visitors"
-                    chart_file = output_dir / f"{filename_base}.png"
-                    create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
+                # Export data if requested
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    xlsx_file = output_dir / f"{filename_base}.xlsx"
+                    export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                                 end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
+                    export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                                   end_date_str=args.end_date, is_day_of_week=True, is_unique=args.unique)
                 
             elif args.average:
                 filename_base = f"vrcx_average_{args.start_date}_to_{args.end_date}"
                 if args.unique:
                     filename_base += "_unique"
-                csv_file = output_dir / f"{filename_base}.csv"
-                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_average=True, is_unique=args.unique)
-                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_average=True, is_unique=args.unique)
+                # Generate chart (always)
+                chart_label = "Average Hourly Attendance - Unique Visitors" if args.unique else "Average Hourly Attendance - All Visitors"
+                chart_file = output_dir / f"{filename_base}.png"
+                create_average_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
                 
-                # Generate chart if requested
-                if args.chart:
-                    chart_label = "Average Hourly Attendance - Unique Visitors" if args.unique else "Average Hourly Attendance - All Visitors"
-                    chart_file = output_dir / f"{filename_base}.png"
-                    create_average_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
+                # Export data if requested
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    xlsx_file = output_dir / f"{filename_base}.xlsx"
+                    export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                                 end_date_str=args.end_date, is_average=True, is_unique=args.unique)
+                    export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                                   end_date_str=args.end_date, is_average=True, is_unique=args.unique)
                     
             elif is_date_range:
                 filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
                 if args.unique:
                     filename_base += "_unique"
-                csv_file = output_dir / f"{filename_base}.csv"
-                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
-                             end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
-                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
-                               end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
+                # Export data if requested (no chart for daily breakdown)
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    xlsx_file = output_dir / f"{filename_base}.xlsx"
+                    export_to_csv(db, str(csv_file), start_date_str=args.start_date, 
+                                 end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
+                    export_to_excel(db, str(xlsx_file), start_date_str=args.start_date, 
+                                   end_date_str=args.end_date, is_daily=True, is_unique=args.unique)
             else:
                 filename_base = f"vrcx_hourly_{args.date}"
                 if args.unique:
                     filename_base += "_unique"
-                csv_file = output_dir / f"{filename_base}.csv"
-                xlsx_file = output_dir / f"{filename_base}.xlsx"
                 
-                export_to_csv(db, str(csv_file), date_str=args.date, is_unique=args.unique)
-                export_to_excel(db, str(xlsx_file), date_str=args.date, is_unique=args.unique)
+                # Generate chart (always)
+                chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
+                chart_file = output_dir / f"{filename_base}.png"
+                create_daily_chart(db, str(chart_file), args.date, chart_label, args.unique)
                 
-                # Generate chart if requested
-                if args.chart:
-                    chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
-                    chart_file = output_dir / f"{filename_base}.png"
-                    create_daily_chart(db, str(chart_file), args.date, chart_label, args.unique)
-            
-            print(f"\n✓ All exports completed in {output_dir}/")
+                # Export data if requested
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    xlsx_file = output_dir / f"{filename_base}.xlsx"
+                    export_to_csv(db, str(csv_file), date_str=args.date, is_unique=args.unique)
+                    export_to_excel(db, str(xlsx_file), date_str=args.date, is_unique=args.unique)
+        
+        # Export data if requested message
+        if args.export_data:
+            print(f"\n✓ All data exports completed in {output_dir}/")
+        else:
+            print(f"\n✓ All charts completed in {output_dir}/")
         
     except Exception as e:
         print(f"\n✗ Error: {e}")

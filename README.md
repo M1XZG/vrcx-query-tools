@@ -125,28 +125,28 @@ This shows the average number of people joining/leaving at each hour, useful for
 Get average attendance by day of week (Sunday-Saturday) across a date range:
 
 ```bash
-# Average attendance for each day of the week
+# Average attendance for each day of the week (generates chart)
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week
 
-# With chart visualization
-python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --chart
+# Also export to CSV and Excel
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --export-data
 ```
 
-This shows which days of the week have the highest average attendance, helping you identify the best days to visit.
+This shows which days of the week have the highest average attendance, helping you identify the best days to visit. A chart is always generated and saved as a PNG image.
 
 #### Weekly Breakdown by Day of Week
 
 Get attendance for each day of the week, broken down week-by-week across a date range:
 
 ```bash
-# Week-by-week breakdown for December
+# Week-by-week breakdown for December (generates charts automatically)
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly
 
-# With charts (creates one chart per week)
-python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly --chart
+# Also export data to CSV and Excel
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly --export-data
 ```
 
-This creates a report showing each week's attendance by day (Sunday through Saturday). When using `--chart`, it generates:
+This creates a report showing each week's attendance by day (Sunday through Saturday). Charts are automatically generated:
 - A separate bar chart for each individual week
 - A combined chart showing all weeks together in a single image for easy comparison
 
@@ -181,23 +181,24 @@ The `--unique` flag is useful for understanding visitor traffic instead of total
 #### Additional Options
 
 ```bash
-# Skip exporting to files
-python vrcx_query.py --date 2025-12-25 --no-export
+# Export data to CSV and Excel (charts are always generated)
+python vrcx_query.py --date 2025-12-25 --export-data
 
-# Generate a chart (PNG image)
-python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --chart
+# Generate charts without exporting data files (faster)
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average
 
 # Combine options
-python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --no-export
+python vrcx_query.py --start-date 2025-12-20 --end-date 2025-12-30 --average --export-data
 
-# Unique visitors with chart
-python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique --chart
+# Unique visitors with chart (data export optional)
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique --export-data
 
 # Show verbose database information
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --verbose
 ```
 
-The `--chart` flag creates a bar chart visualization showing average attendance by hour. The `--verbose` flag displays database table names and other technical information during execution.
+**Note:** Charts (PNG images) are generated for all queries by default. Use `--export-data` to also save CSV and Excel files.
 
 ### Command-Line Options
 
@@ -210,8 +211,7 @@ The `--chart` flag creates a bar chart visualization showing average attendance 
 | `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
 | `--weekly` | Show week-by-week breakdown with day-of-week attendance |
 | `--unique` | Count unique visitors only once per day (ignores multiple join/leave events) |
-| `--no-export` | Skip exporting to CSV and Excel files |
-| `--chart` | Generate chart visualization (PNG image) |
+| `--export-data` | Export data to CSV and Excel files (charts always generated) |
 | `--verbose` | Show verbose output including database table information |
 
 ### Available Query Functions
