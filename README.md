@@ -56,6 +56,10 @@ VRCX_DATA_PATH=C:\Users\YourUsername\AppData\Roaming\VRCX
 
 # Database file name (default: VRCX.sqlite3)
 VRCX_DB_FILE=VRCX.sqlite3
+
+# Output directory for reports and exports (default: ./vrcx_exports)
+# You can set this to any absolute or relative path where you want reports saved
+VRCX_REPORTS_OUTPUT_PATH=./vrcx_exports
 ```
 
 **Important:** The `.env` file contains your local paths and is excluded from git via `.gitignore`.

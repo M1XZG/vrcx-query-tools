@@ -1106,7 +1106,7 @@ def main():
             print("EXPORTING DATA")
             print(f"{'='*80}")
             
-            output_dir = Path("./vrcx_exports")
+            output_dir = Path(os.getenv('VRCX_REPORTS_OUTPUT_PATH', './vrcx_exports'))
             output_dir.mkdir(exist_ok=True)
             
             if args.weekly:
