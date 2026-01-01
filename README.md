@@ -7,8 +7,10 @@ Tools and scripts for querying and analyzing VRCX database data, including Pytho
 This repository contains tools for analyzing your VRChat activity data stored in VRCX's SQLite database. It provides:
 
 - Python scripts for querying location history, join/leave events, and instance statistics
-- Hour-by-hour reports of people in instances
+- Hour-by-hour reports with filtering by world or specific instance
+- Support for both total join/leave counts and unique visitor tracking
 - CSV and Excel export capabilities
+- Automatic chart generation (PNG) for all reports
 - Comprehensive database schema documentation
 
 ## Prerequisites
@@ -178,6 +180,88 @@ The `--unique` flag is useful for understanding visitor traffic instead of total
 
 **Example:** If a user joins at 10 AM, leaves at 11 AM, and rejoins at 2 PM, they'll be counted as 1 unique visitor for the day instead of 2.
 
+#### Filter Reports by Specific World Instances
+
+Analyze attendance for specific VRChat worlds. First, list all worlds you visited during a date range:
+
+```bash
+# List all worlds visited during a date range
+python vrcx_query.py --start-date 2025-12-31 --end-date 2026-01-01 --list-worlds
+```
+
+This displays:
+- World Name
+- World ID
+- Number of days visited
+- Total join/leave events
+
+**Output Example:**
+```
+World Name                               World ID             Days   Events     
+--------------------------------------------------------------------------------
+Rainbow Library                          wrld_f83bc1b2-c52f-4 2      2
+Neon AFK Home                            wrld_4941600b-e662-4 1      1
+```
+
+Once you identify a world ID, filter any report to show only that world's data:
+
+```bash
+# Hourly attendance for a specific world on a date
+python vrcx_query.py --date 2025-12-31 --world-id "wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841" --world-name "Rainbow Library"
+
+# List all instances for a specific world (with instance IDs for VRChat URLs)
+python vrcx_query.py --start-date 2025-12-31 --end-date 2026-01-01 --world-id "wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841" --world-name "Rainbow Library" --list-instances
+
+# Unique visitors for a specific world
+python vrcx_query.py --date 2025-12-31 --world-id "wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841" --world-name "Rainbow Library" --unique
+
+# World attendance across a date range (generates chart for each day)
+python vrcx_query.py --start-date 2025-12-31 --end-date 2026-01-01 --world-id "wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841" --world-name "Rainbow Library"
+
+# Export world data to CSV and Excel
+python vrcx_query.py --date 2025-12-31 --world-id "wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841" --export-data
+```
+
+The instance IDs returned can be used directly in VRChat launch URLs:
+```
+https://vrchat.com/home/launch?worldId=wrld_f83bc1b2-c52f-417a-aa54-6f3f012db841&instanceId=54883~group(grp_1134d194-858d-4407-9df2-18ae9089d86d)~groupAccessType(public)~region(eu)
+```
+
+**World Filtering Options:**
+- `--list-worlds` - List all worlds visited in a date range
+- `--list-instances` - List all instances for a specific world (requires `--world-id`)
+- `--world-id <id>` - Filter reports to a specific world ID
+- `--world-name <name>` - Display name for the world in reports (optional, improves readability)
+
+The world ID is extracted from the location field in your join/leave events, so you can track attendance in any specific world and generate reports/charts limited to those instances.
+
+#### Filter Reports by Specific Instance
+
+Once you have an instance ID (from `--list-instances`), you can generate detailed reports for individual instances:
+
+```bash
+# Hourly attendance for a specific instance on a date
+python vrcx_query.py --date 2025-12-31 --instance-id "54883~group(grp_1134d194-858d-4407-9df2-18ae9089d86d)~groupAccessType(public)~region(eu)"
+
+# Unique visitors for a specific instance
+python vrcx_query.py --date 2025-12-31 --instance-id "54883~group(grp_1134d194-858d-4407-9df2-18ae9089d86d)~groupAccessType(public)~region(eu)" --unique
+
+# Instance attendance across a date range (generates chart for each day)
+python vrcx_query.py --start-date 2025-12-31 --end-date 2026-01-01 --instance-id "54883~group(grp_1134d194-858d-4407-9df2-18ae9089d86d)~groupAccessType(public)~region(eu)"
+
+# Export instance data to CSV and chart
+python vrcx_query.py --date 2025-12-31 --instance-id "54883~group(grp_1134d194-858d-4407-9df2-18ae9089d86d)~groupAccessType(public)~region(eu)" --export-data
+
+# Track attendance trends for a specific instance over a week
+python vrcx_query.py --start-date 2025-12-25 --end-date 2025-12-31 --instance-id "54883~group(...)" --export-data
+```
+
+**Instance Filtering Options:**
+
+- `--instance-id <id>` - Filter reports to a specific instance (full instance ID from location field)
+
+The instance ID is the complete string returned by `--list-instances`, which can also be used directly in VRChat launch URLs. Instance-level reports are useful for tracking popularity of specific group instances or monitoring attendance at private events.
+
 #### Additional Options
 
 ```bash
@@ -212,6 +296,11 @@ python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week
 | `--weekly` | Show week-by-week breakdown with day-of-week attendance |
 | `--unique` | Count unique visitors only once per day (ignores multiple join/leave events) |
 | `--export-data` | Export data to CSV and Excel files (charts always generated) |
+| `--list-worlds` | List all worlds visited during a date range |
+| `--list-instances` | List all instances for a specific world (requires `--world-id`) |
+| `--world-id <id>` | Filter reports to a specific world ID |
+| `--world-name <name>` | Optional display name for the world in reports |
+| `--instance-id <id>` | Filter reports to a specific instance (full instance ID from location field) |
 | `--verbose` | Show verbose output including database table information |
 
 ### Available Query Functions
@@ -224,6 +313,12 @@ The `VRCXQuery` class provides several methods:
 - `get_hour_by_hour_average(start_date_str, end_date_str)` - Average attendance across a date range
 - `get_people_in_instances_by_hour(date_str)` - Detailed breakdown
 - `get_instance_statistics(date_str)` - Instance visit stats
+- `get_unique_worlds(start_date_str, end_date_str)` - List all worlds visited in a date range
+- `get_unique_instances_for_world(world_id, start_date_str, end_date_str)` - List all instances for a specific world with instance IDs
+- `get_hour_by_hour_summary_for_world(world_id, date_str)` - Hourly stats for a specific world
+- `get_unique_visitors_by_hour_for_world(world_id, date_str)` - Unique hourly visitors for a specific world
+- `get_hour_by_hour_summary_for_instance(instance_id, date_str)` - Hourly stats for a specific instance
+- `get_unique_visitors_by_hour_for_instance(instance_id, date_str)` - Unique hourly visitors for a specific instance
 
 ### Export Formats
 
@@ -237,6 +332,7 @@ The script exports data in multiple formats:
   - Average: `vrcx_exports/vrcx_average_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Day of week: `vrcx_exports/vrcx_day_of_week_YYYY-MM-DD_to_YYYY-MM-DD.csv`
   - Weekly breakdown: `vrcx_exports/vrcx_weekly_YYYY-MM-DD_to_YYYY-MM-DD.csv`
+  - Instance hourly: `vrcx_exports/vrcx_instance_YYYY-MM-DD.csv`
 
 - **Excel:**
   - Single date: `vrcx_exports/vrcx_hourly_YYYY-MM-DD.xlsx`
@@ -253,6 +349,8 @@ The script exports data in multiple formats:
 - Weekly breakdown:
   - Individual weeks: `vrcx_exports/vrcx_week_YYYY-MM-DD_to_YYYY-MM-DD.png` (one per week)
   - Combined view: `vrcx_exports/vrcx_weekly_YYYY-MM-DD_to_YYYY-MM-DD_combined.png` (all weeks in one image)
+- Instance attendance: `vrcx_exports/vrcx_instance_YYYY-MM-DD.png`
+- Instance unique visitors: `vrcx_exports/vrcx_instance_YYYY-MM-DD_unique.png`
 
 ## Documentation
 

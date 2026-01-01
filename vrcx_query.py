@@ -94,7 +94,7 @@ class VRCXDatabase:
         try:
             self.connection = sqlite3.connect(self.db_path)
             self.connection.row_factory = sqlite3.Row  # Return rows as dictionaries
-            print(f"✓ Connected to database")
+            print(f"[OK] Connected to database")
         except sqlite3.Error as e:
             print(f"✗ Database connection failed: {e}")
             sys.exit(1)
@@ -103,7 +103,7 @@ class VRCXDatabase:
         """Close database connection."""
         if self.connection:
             self.connection.close()
-            print(f"✓ Database connection closed")
+            print(f"[OK] Database connection closed")
     
     def execute(self, query, params=None):
         """Execute a query and return results."""
@@ -631,11 +631,257 @@ class VRCXQuery:
         
         results = self.db.execute(query, (start_date_str, end_date_str))
         return results
-
-
-# ==============================================================================
-# Reporting Functions
-# ==============================================================================
+    
+    def get_unique_worlds(self, start_date_str=None, end_date_str=None):
+        """
+        Get list of unique worlds visited during a date range.
+        
+        Returns data like:
+        World ID | World Name | Visit Count
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            world_id,
+            world_name,
+            COUNT(DISTINCT DATE(created_at)) as visit_count,
+            COUNT(*) as total_events
+        FROM gamelog_location
+        WHERE DATE(created_at) BETWEEN ? AND ? AND world_id IS NOT NULL
+        GROUP BY world_id, world_name
+        ORDER BY visit_count DESC, world_name ASC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+    
+    def get_unique_instances_for_world(self, world_id, start_date_str=None, end_date_str=None):
+        """
+        Get list of unique instances (with instance IDs) visited for a specific world during a date range.
+        
+        Args:
+            world_id: World ID to filter by
+            start_date_str: Start date
+            end_date_str: End date
+        
+        Returns data like:
+        Instance ID | Visit Count | Last Visited
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            location as instance_id,
+            SUBSTR(location, INSTR(location, ':') + 1) as instance_number,
+            COUNT(DISTINCT DATE(created_at)) as visit_count,
+            MAX(created_at) as last_visited
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ? AND SUBSTR(location, 1, ?) = ?
+        GROUP BY location
+        ORDER BY visit_count DESC, last_visited DESC
+        """
+        
+        world_id_len = len(world_id)
+        results = self.db.execute(query, (start_date_str, end_date_str, world_id_len, world_id))
+        return results
+    
+    def get_hour_by_hour_summary_for_instance(self, instance_id, date_str=None):
+        """
+        Get hour-by-hour summary for a specific instance on a given date.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
+        
+        Args:
+            instance_id: Full instance ID (location field value)
+            date_str: Date in format 'YYYY-MM-DD'
+        
+        Returns:
+            Hour-by-hour data for the specific instance
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
+        SELECT 
+            h.hour,
+            COALESCE(COUNT(*), 0) as unique_people
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
+            AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+            AND j.location = ?
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
+        """
+        
+        results = self.db.execute(query, (date_str, instance_id))
+        return results
+    
+    def get_unique_visitors_by_hour_for_instance(self, instance_id, date_str=None):
+        """
+        Get hour-by-hour count of unique visitors for a specific instance.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
+        
+        Args:
+            instance_id: Full instance ID (location field value)
+            date_str: Date in format 'YYYY-MM-DD'
+        
+        Returns:
+            Hour-by-hour unique visitor data for the specific instance
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
+        SELECT 
+            h.hour,
+            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
+            AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+            AND j.location = ?
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
+        """
+        
+        results = self.db.execute(query, (date_str, instance_id))
+        return results
+    
+    def get_users_for_instance(self, instance_id, start_date_str=None, end_date_str=None):
+        """
+        Get list of all unique users who visited a specific instance during a date range.
+        
+        Args:
+            instance_id: Full instance ID (location field value)
+            start_date_str: Start date
+            end_date_str: End date
+        
+        Returns data like:
+        User Name | Visit Count | Days Visited | First Visit | Last Visit
+        """
+        if start_date_str is None:
+            start_date_str = datetime.now().strftime('%Y-%m-%d')
+        if end_date_str is None:
+            end_date_str = start_date_str
+        
+        query = """
+        SELECT 
+            display_name,
+            COUNT(*) as visit_count,
+            COUNT(DISTINCT DATE(created_at)) as days_visited,
+            MIN(created_at) as first_visit,
+            MAX(created_at) as last_visit
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ? AND location = ?
+        GROUP BY display_name
+        ORDER BY visit_count DESC, last_visit DESC
+        """
+        
+        results = self.db.execute(query, (start_date_str, end_date_str, instance_id))
+        return results
+    
+    def get_hour_by_hour_summary_for_world(self, world_id, date_str=None):
+        """
+        Get hour-by-hour summary for a specific world on a given date.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
+        Extracts world_id from location field (format: wrld_xxx:instance~...)
+        
+        Args:
+            world_id: World ID to filter by (e.g., 'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd')
+            date_str: Date in format 'YYYY-MM-DD'
+        
+        Returns:
+            Hour-by-hour data for the specific world
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
+        SELECT 
+            h.hour,
+            COALESCE(COUNT(*), 0) as unique_people
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
+            AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+            AND SUBSTR(j.location, 1, ?) = ?
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
+        """
+        
+        # Extract world_id length for substring matching
+        world_id_len = len(world_id)
+        results = self.db.execute(query, (date_str, world_id_len, world_id))
+        return results
+    
+    def get_unique_visitors_by_hour_for_world(self, world_id, date_str=None):
+        """
+        Get hour-by-hour count of unique visitors for a specific world.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
+        Extracts world_id from location field (format: wrld_xxx:instance~...)
+        
+        Args:
+            world_id: World ID to filter by (e.g., 'wrld_4432ea9b-729c-46e3-8eaf-846aa0a37fdd')
+            date_str: Date in format 'YYYY-MM-DD'
+        
+        Returns:
+            Hour-by-hour unique visitor data for the specific world
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
+        SELECT 
+            h.hour,
+            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
+            AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+            AND SUBSTR(j.location, 1, ?) = ?
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
+        """
+        
+        # Extract world_id length for substring matching
+        world_id_len = len(world_id)
+        results = self.db.execute(query, (date_str, world_id_len, world_id))
+        return results
 
 def print_location_history(db, date_str=None):
     """Print location history for a date."""
@@ -785,7 +1031,175 @@ def print_day_of_week_average(db, start_date_str=None, end_date_str=None, is_uni
         print(f"{day_name:<12} {avg_people:<15}")
 
 
-def print_weekly_day_of_week_breakdown(db, start_date_str=None, end_date_str=None):
+def print_world_list(db, start_date_str=None, end_date_str=None):
+    """Print list of unique worlds visited during a date range."""
+    query = VRCXQuery(db)
+    worlds = query.get_unique_worlds(start_date_str, end_date_str)
+    
+    print(f"\n{'='*80}")
+    print(f"Worlds Visited - {start_date_str} to {end_date_str or start_date_str}")
+    print(f"{'='*80}")
+    
+    if not worlds:
+        print("No world data found for this date range")
+        return
+    
+    print(f"{'World Name':<40} {'World ID':<45} {'Days':<6} {'Events':<8}")
+    print("-" * 99)
+    
+    for row in worlds:
+        world_name = (row['world_name'] or 'Unknown')[:40]
+        world_id = (row['world_id'] or 'Unknown')[:45]
+        days = row['visit_count'] or 0
+        events = row['total_events'] or 0
+        
+        print(f"{world_name:<40} {world_id:<45} {days:<6} {events:<8}")
+
+
+def print_instances_for_world(db, world_id, world_name=None, start_date_str=None, end_date_str=None):
+    """Print list of unique instances for a specific world."""
+    query = VRCXQuery(db)
+    instances = query.get_unique_instances_for_world(world_id, start_date_str, end_date_str)
+    
+    title = world_name or world_id
+    print(f"\n{'='*130}")
+    print(f"Instances for World: {title}")
+    print(f"{start_date_str} to {end_date_str or start_date_str}")
+    print(f"{'='*130}")
+    
+    if not instances:
+        print("No instance data found for this world in the date range")
+        return
+    
+    print(f"{'Instance Number':<100} {'Days':<6} {'Last Visited':<20}")
+    print("-" * 130)
+    
+    for row in instances:
+        instance_num = (row['instance_number'] or 'Unknown')[:100]
+        days = row['visit_count'] or 0
+        last_visited = row['last_visited'] or 'Unknown'
+        
+        print(f"{instance_num:<100} {days:<6} {last_visited:<20}")
+
+
+
+def print_hour_by_hour_summary_for_world(db, world_id, world_name=None, date_str=None, is_unique=False):
+    """Print hour-by-hour summary for a specific world on a given date."""
+    query = VRCXQuery(db)
+    if is_unique:
+        summary = query.get_unique_visitors_by_hour_for_world(world_id, date_str)
+        col = 'unique_visitors'
+        title = f'Hour-by-Hour Summary (Unique Visitors) - {world_name or world_id}'
+    else:
+        summary = query.get_hour_by_hour_summary_for_world(world_id, date_str)
+        col = 'unique_people'
+        title = f'Hour-by-Hour Summary - {world_name or world_id}'
+    
+    print(f"\n{'='*60}")
+    print(f"{title} - {date_str or 'Today'}")
+    print(f"{'='*60}")
+    
+    if not summary:
+        print("No data found for this world on this date")
+        return
+    
+    # Print header
+    print(f"{'Hour':<6} {'People':<10}")
+    print("-" * 60)
+    
+    for row in summary:
+        hour = f"{row['hour']:02d}:00"
+        people = row[col] or 0
+        
+        print(f"{hour:<6} {people:<10}")
+
+
+def print_hour_by_hour_summary_for_instance(db, instance_id, date_str=None, is_unique=False):
+    """Print hour-by-hour summary for a specific instance on a given date."""
+    query = VRCXQuery(db)
+    if is_unique:
+        summary = query.get_unique_visitors_by_hour_for_instance(instance_id, date_str)
+        col = 'unique_visitors'
+        title = f'Hour-by-Hour Summary (Unique Visitors)'
+    else:
+        summary = query.get_hour_by_hour_summary_for_instance(instance_id, date_str)
+        col = 'unique_people'
+        title = f'Hour-by-Hour Summary'
+    
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    print(f"\n{'='*100}")
+    print(f"{title} - {date_str}")
+    print(f"Instance ID: {instance_id}")
+    print(f"{'='*100}")
+    
+    if not summary:
+        print("No data found for this instance on this date")
+        return
+    
+    # Print header
+    print(f"{'Hour':<6} {'People':<10}")
+    print("-" * 100)
+    
+    for row in summary:
+        hour = f"{row['hour']:02d}:00"
+        people = row[col] or 0
+        
+        print(f"{hour:<6} {people:<10}")
+
+
+def print_users_for_instance(db, instance_id, start_date_str=None, end_date_str=None):
+    """Print list of unique users who visited a specific instance."""
+    query = VRCXQuery(db)
+    users = query.get_users_for_instance(instance_id, start_date_str, end_date_str)
+    
+    if start_date_str is None:
+        start_date_str = datetime.now().strftime('%Y-%m-%d')
+    if end_date_str is None:
+        end_date_str = start_date_str
+    
+    print(f"\n{'='*130}")
+    print(f"Users who visited instance: {instance_id}")
+    print(f"Date range: {start_date_str} to {end_date_str}")
+    print(f"{'='*130}")
+    
+    if not users:
+        print("No users found for this instance in the date range")
+        return
+    
+    # Calculate totals
+    total_users = len(list(users))
+    users = query.get_users_for_instance(instance_id, start_date_str, end_date_str)  # Re-query
+    total_visits = sum(row['visit_count'] for row in users)
+    users = query.get_users_for_instance(instance_id, start_date_str, end_date_str)  # Re-query again
+    
+    print(f"\nTotal Unique Users: {total_users}")
+    print(f"Total Visits: {total_visits}\n")
+    
+    # Print header
+    print(f"{'User Name':<30} {'Visits':<10} {'Days':<6} {'First Visit':<20} {'Last Visit':<20}")
+    print("-" * 130)
+    
+    for row in users:
+        user = (row['display_name'] or 'Unknown')[:30]
+        # Encode safely to avoid Unicode errors on Windows terminals
+        try:
+            user_safe = user.encode('ascii', 'replace').decode('ascii')
+        except:
+            user_safe = 'Unknown'
+        visits = row['visit_count'] or 0
+        days = row['days_visited'] or 0
+        first = row['first_visit'] or 'Unknown'
+        last = row['last_visit'] or 'Unknown'
+        
+        try:
+            print(f"{user_safe:<30} {visits:<10} {days:<6} {first:<20} {last:<20}")
+        except UnicodeEncodeError:
+            print(f"{'<encoding-error>':<30} {visits:<10} {days:<6} {first:<20} {last:<20}")
+
+
+def print_day_of_week_average(db, start_date_str=None, end_date_str=None, is_unique=False):
     """Print attendance by day of week for each week in the date range."""
     query = VRCXQuery(db)
     summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
@@ -870,7 +1284,7 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Chart saved to {output_file}")
+    print(f"[OK] Chart saved to {output_file}")
 
 
 def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Attendance - All Visitors', is_unique=False):
@@ -919,7 +1333,59 @@ def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Atten
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Chart saved to {output_file}")
+    print(f"[OK] Chart saved to {output_file}")
+
+
+def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None, chart_label='Hourly Attendance - Instance', is_unique=False):
+    """Create a bar chart showing hourly attendance for a specific instance."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+    except ImportError:
+        print("WARNING: matplotlib not installed. Install with: pip install matplotlib")
+        return
+    
+    query = VRCXQuery(db)
+    if is_unique:
+        summary = query.get_unique_visitors_by_hour_for_instance(instance_id, date_str)
+        col = 'unique_visitors'
+        y_label = 'Unique Visitors'
+    else:
+        summary = query.get_hour_by_hour_summary_for_instance(instance_id, date_str)
+        col = 'unique_people'
+        y_label = 'Unique People'
+    
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    if not summary:
+        print("No data to chart")
+        return
+    
+    # Extract data
+    hours = [row['hour'] for row in summary]
+    people = [row[col] or 0 for row in summary]
+    
+    # Create chart
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.bar(hours, people, color='#ff7f0e', width=0.8)
+    ax.set_xlabel('Hour', fontsize=12)
+    ax.set_ylabel(y_label, fontsize=12)
+    ax.set_title(f'Instance Hourly Attendance - {date_str}\n{instance_id}', fontsize=12, fontweight='bold')
+    ax.set_xticks(hours)
+    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.grid(axis='y', alpha=0.3)
+    
+    # Add info box at bottom
+    fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+    
+    plt.subplots_adjust(bottom=0.15)
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"[OK] Chart saved to {output_file}")
 
 
 def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Day of Week - All Visitors', is_unique=False):
@@ -973,7 +1439,7 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Chart saved to {output_file}")
+    print(f"[OK] Chart saved to {output_file}")
 
 
 def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
@@ -1046,7 +1512,7 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None,
         plt.close()
         
         chart_files.append(str(output_file))
-        print(f"✓ Chart saved to {output_file}")
+        print(f"[OK] Chart saved to {output_file}")
     
     return chart_files
 
@@ -1144,7 +1610,7 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Combined chart saved to {output_file}")
+    print(f"[OK] Combined chart saved to {output_file}")
 
 
 def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
@@ -1259,7 +1725,54 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
                         row['unique_people'] or 0
                     ])
     
-    print(f"✓ Exported to {output_file}")
+    print(f"[OK] Exported to {output_file}")
+
+
+def export_to_csv_for_instance(db, output_file, instance_id, date_str=None, is_unique=False):
+    """Export hour-by-hour data for a specific instance to CSV file."""
+    try:
+        import csv
+    except ImportError:
+        print("ERROR: csv module not available")
+        return
+    
+    query = VRCXQuery(db)
+    
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    if is_unique:
+        summary = query.get_unique_visitors_by_hour_for_instance(instance_id, date_str)
+        fieldnames = ['Hour', 'Unique Visitors']
+    else:
+        summary = query.get_hour_by_hour_summary_for_instance(instance_id, date_str)
+        fieldnames = ['Hour', 'People']
+    
+    if not summary:
+        print("No data to export")
+        return
+    
+    with open(output_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        # Write instance ID as first row for context
+        writer.writerow(['Instance ID', instance_id])
+        writer.writerow(['Date', date_str])
+        writer.writerow([])  # Blank row for separation
+        writer.writerow(fieldnames)
+        
+        for row in summary:
+            if is_unique:
+                writer.writerow([
+                    f"{row['hour']:02d}:00",
+                    row['unique_visitors'] or 0
+                ])
+            else:
+                writer.writerow([
+                    f"{row['hour']:02d}:00",
+                    row['unique_people'] or 0
+                ])
+    
+    print(f"[OK] Exported to {output_file}")
 
 
 def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
@@ -1430,7 +1943,7 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
                 cell.alignment = Alignment(horizontal="center")
     
     wb.save(output_file)
-    print(f"✓ Exported to {output_file}")
+    print(f"[OK] Exported to {output_file}")
 
 
 # ==============================================================================
@@ -1449,6 +1962,11 @@ def main():
     parser.add_argument('--unique', action='store_true', help='Count unique visitors only once per day (ignores join/leave counts)')
     parser.add_argument('--export-data', action='store_true', help='Export data to CSV and Excel files')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output including database table information')
+    parser.add_argument('--list-worlds', action='store_true', help='List all worlds visited during the date range')
+    parser.add_argument('--world-id', type=str, help='Filter reports to a specific world ID')
+    parser.add_argument('--world-name', type=str, help='Optional display name for the world in reports')
+    parser.add_argument('--list-instances', action='store_true', help='List all instances for a specific world (requires --world-id)')
+    parser.add_argument('--instance-id', '--instance', type=str, dest='instance_id', help='Filter reports to a specific instance (full instance ID from location field)')
     
     args = parser.parse_args()
     
@@ -1494,7 +2012,69 @@ def main():
         print("QUERYING VRCX DATABASE")
         print("="*80)
         
-        if args.weekly:
+        if args.list_worlds:
+            # List all worlds in the date range
+            if not args.start_date:
+                args.start_date = args.date or datetime.now().strftime('%Y-%m-%d')
+            if not args.end_date:
+                args.end_date = args.start_date
+            print_world_list(db, args.start_date, args.end_date)
+        elif args.list_instances:
+            # List all instances for a specific world
+            if not args.world_id:
+                print("Error: --list-instances requires --world-id")
+                db.close()
+                return
+            if not args.start_date:
+                args.start_date = args.date or datetime.now().strftime('%Y-%m-%d')
+            if not args.end_date:
+                args.end_date = args.start_date
+            print_instances_for_world(db, args.world_id, args.world_name, args.start_date, args.end_date)
+        elif args.instance_id:
+            # Run reports filtered to a specific instance - show hourly attendance
+            
+            # If world_id is provided but instance_id doesn't contain it, prepend it
+            if args.world_id and ':' not in args.instance_id:
+                args.instance_id = f"{args.world_id}:{args.instance_id}"
+            
+            if not args.start_date:
+                args.start_date = args.date or datetime.now().strftime('%Y-%m-%d')
+            if not args.end_date:
+                args.end_date = args.start_date
+            
+            # Generate hourly reports for instance (don't return early, let it continue to chart generation)
+            if args.date:
+                print_hour_by_hour_summary_for_instance(db, args.instance_id, args.date, args.unique)
+            elif is_date_range:
+                # For date ranges with instance filter, show hourly for each day
+                print(f"\nHourly Attendance by Instance - {args.instance_id}")
+                start = datetime.strptime(args.start_date, '%Y-%m-%d')
+                end = datetime.strptime(args.end_date, '%Y-%m-%d')
+                current = start
+                
+                while current <= end:
+                    date_str = current.strftime('%Y-%m-%d')
+                    print_hour_by_hour_summary_for_instance(db, args.instance_id, date_str, args.unique)
+                    current += timedelta(days=1)
+        elif args.world_id:
+            # Run reports filtered to a specific world
+            if args.world_name is None:
+                args.world_name = args.world_id
+            
+            if args.date:
+                print_hour_by_hour_summary_for_world(db, args.world_id, args.world_name, args.date, args.unique)
+            elif is_date_range:
+                # For date ranges with world filter, show hourly for each day
+                print(f"\nHourly Attendance by World - {args.world_id}")
+                start = datetime.strptime(args.start_date, '%Y-%m-%d')
+                end = datetime.strptime(args.end_date, '%Y-%m-%d')
+                current = start
+                
+                while current <= end:
+                    date_str = current.strftime('%Y-%m-%d')
+                    print_hour_by_hour_summary_for_world(db, args.world_id, args.world_name, date_str, args.unique)
+                    current += timedelta(days=1)
+        elif args.weekly:
             print_weekly_day_of_week_breakdown(db, args.start_date, args.end_date)
         elif args.day_of_week:
             print_day_of_week_average(db, args.start_date, args.end_date, args.unique)
@@ -1505,6 +2085,12 @@ def main():
         else:
             print_location_history(db, args.date)
             print_hour_by_hour_summary(db, args.date, args.unique)
+        
+        # Skip chart generation if just listing worlds or instances
+        if args.list_worlds or args.list_instances:
+            print(f"\n[OK] List completed")
+            db.close()
+            return
         
         # Export charts (always generated)
         output_dir = Path(os.getenv('VRCX_REPORTS_OUTPUT_PATH', './vrcx_exports'))
@@ -1521,7 +2107,7 @@ def main():
 
             chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
             chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
-            print(f"✓ Created {len(chart_files)} individual weekly charts")
+            print(f"[OK] Created {len(chart_files)} individual weekly charts")
             combined_chart = output_dir / f"{filename_base}_combined.png"
             create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique)
 
@@ -1567,6 +2153,48 @@ def main():
                 export_to_excel(db, str(xlsx_file), start_date_str=args.start_date,
                                end_date_str=args.end_date, is_average=True, is_unique=args.unique)
 
+        elif args.instance_id:
+            filename_base = f"vrcx_instance_{args.date or 'range'}"
+            if args.unique:
+                filename_base += "_unique"
+
+            chart_label = "Instance Hourly Attendance - Unique Visitors" if args.unique else "Instance Hourly Attendance - All Visitors"
+            
+            if args.date:
+                # Single day for instance
+                chart_file = output_dir / f"{filename_base}.png"
+                create_daily_chart_for_instance(db, str(chart_file), args.instance_id, args.date, chart_label, args.unique)
+                
+                if args.export_data:
+                    csv_file = output_dir / f"{filename_base}.csv"
+                    export_to_csv_for_instance(db, str(csv_file), args.instance_id, args.date, args.unique)
+            elif is_date_range:
+                # Date range for instance - generate chart for each day
+                start = datetime.strptime(args.start_date, '%Y-%m-%d')
+                end = datetime.strptime(args.end_date, '%Y-%m-%d')
+                current = start
+                chart_count = 0
+                
+                while current <= end:
+                    date_str = current.strftime('%Y-%m-%d')
+                    chart_filename = f"vrcx_instance_{date_str}"
+                    if args.unique:
+                        chart_filename += "_unique"
+                    chart_file = output_dir / f"{chart_filename}.png"
+                    create_daily_chart_for_instance(db, str(chart_file), args.instance_id, date_str, chart_label, args.unique)
+                    chart_count += 1
+                    current += timedelta(days=1)
+                
+                print(f"[OK] Created {chart_count} instance daily charts")
+                
+                if args.export_data:
+                    csv_file = output_dir / f"vrcx_instance_{args.start_date}_to_{args.end_date}"
+                    if args.unique:
+                        csv_file += "_unique"
+                    csv_file += ".csv"
+                    # Export the most recent day for CSV when doing date range
+                    export_to_csv_for_instance(db, str(csv_file), args.instance_id, args.end_date, args.unique)
+
         elif is_date_range:
             filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
             if args.unique:
@@ -1574,7 +2202,6 @@ def main():
 
             # Generate hourly charts for each day in the range
             chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
-            from datetime import datetime, timedelta
             start = datetime.strptime(args.start_date, '%Y-%m-%d')
             end = datetime.strptime(args.end_date, '%Y-%m-%d')
             current = start
@@ -1590,7 +2217,7 @@ def main():
                 chart_count += 1
                 current += timedelta(days=1)
             
-            print(f"✓ Created {chart_count} daily charts")
+            print(f"[OK] Created {chart_count} daily charts")
 
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"
@@ -1617,9 +2244,9 @@ def main():
 
         # Completion message
         if args.export_data:
-            print(f"\n✓ All data exports completed in {output_dir}/")
+            print(f"\n[OK] All data exports completed in {output_dir}/")
         else:
-            print(f"\n✓ All charts completed in {output_dir}/")
+            print(f"\n[OK] All charts completed in {output_dir}/")
         
     except Exception as e:
         print(f"\n✗ Error: {e}")
