@@ -221,6 +221,7 @@ class VRCXQuery:
     def get_hour_by_hour_summary(self, date_str=None):
         """
         Get hour-by-hour summary of instances and people for a specific date.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
         
         Returns data like:
         Hour | Unique People
@@ -229,13 +230,21 @@ class VRCXQuery:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
         query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
         SELECT 
-            CAST(strftime('%H', created_at) AS INTEGER) as hour,
-            COUNT(*) as unique_people
-        FROM gamelog_join_leave
-        WHERE DATE(created_at) = ?
-        GROUP BY hour
-        ORDER BY hour ASC
+            h.hour,
+            COALESCE(COUNT(*), 0) as unique_people
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
         """
         
         results = self.db.execute(query, (date_str,))
@@ -245,6 +254,7 @@ class VRCXQuery:
         """
         Get average hour-by-hour attendance across a date range.
         Counts total join/leave events per hour.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
         
         Returns average data like:
         Hour | Avg People
@@ -255,10 +265,15 @@ class VRCXQuery:
             end_date_str = start_date_str
         
         query = """
-        SELECT 
-            hour,
-            CAST(ROUND(AVG(total_people)) AS INTEGER) as avg_unique_people
-        FROM (
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        ),
+        hourly_data AS (
             SELECT 
                 DATE(created_at) as date,
                 CAST(strftime('%H', created_at) AS INTEGER) as hour,
@@ -267,8 +282,13 @@ class VRCXQuery:
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at), hour
         )
-        GROUP BY hour
-        ORDER BY hour ASC
+        SELECT 
+            h.hour,
+            CAST(ROUND(AVG(COALESCE(hd.total_people, 0))) AS INTEGER) as avg_unique_people
+        FROM hours h
+        LEFT JOIN hourly_data hd ON h.hour = hd.hour
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
         """
         
         results = self.db.execute(query, (start_date_str, end_date_str))
@@ -432,8 +452,9 @@ class VRCXQuery:
     
     def get_unique_visitors_by_hour(self, date_str=None):
         """
-        Get unique visitors per hour for a specific date.
+        Get hour-by-hour count of unique visitors (each person counted once per hour).
         Each person is counted only once per hour, regardless of how many times they joined/left.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
         
         Returns data like:
         Hour | Unique Visitors
@@ -442,13 +463,21 @@ class VRCXQuery:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
         query = """
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        )
         SELECT 
-            CAST(strftime('%H', created_at) AS INTEGER) as hour,
-            COUNT(DISTINCT display_name) as unique_visitors
-        FROM gamelog_join_leave
-        WHERE DATE(created_at) = ?
-        GROUP BY hour
-        ORDER BY hour ASC
+            h.hour,
+            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+        FROM hours h
+        LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
         """
         
         results = self.db.execute(query, (date_str,))
@@ -484,6 +513,7 @@ class VRCXQuery:
         """
         Get average unique visitors per hour across a date range.
         Each person is counted only once per hour per day.
+        Includes all 24 hours (0-23), with 0 for hours with no data.
         
         Returns data like:
         Hour | Avg Unique Visitors
@@ -494,10 +524,15 @@ class VRCXQuery:
             end_date_str = start_date_str
         
         query = """
-        SELECT 
-            hour,
-            CAST(ROUND(AVG(unique_visitors)) AS INTEGER) as avg_unique_visitors
-        FROM (
+        WITH hours AS (
+            SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+            UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+            UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11
+            UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+            UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19
+            UNION ALL SELECT 20 UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23
+        ),
+        hourly_data AS (
             SELECT 
                 DATE(created_at) as date,
                 CAST(strftime('%H', created_at) AS INTEGER) as hour,
@@ -506,8 +541,13 @@ class VRCXQuery:
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at), hour
         )
-        GROUP BY hour
-        ORDER BY hour ASC
+        SELECT 
+            h.hour,
+            CAST(ROUND(AVG(COALESCE(hd.unique_visitors, 0))) AS INTEGER) as avg_unique_visitors
+        FROM hours h
+        LEFT JOIN hourly_data hd ON h.hour = hd.hour
+        GROUP BY h.hour
+        ORDER BY h.hour ASC
         """
         
         results = self.db.execute(query, (start_date_str, end_date_str))
@@ -1532,7 +1572,26 @@ def main():
             if args.unique:
                 filename_base += "_unique"
 
-            # No charts for daily breakdown; only export data if requested
+            # Generate hourly charts for each day in the range
+            chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
+            from datetime import datetime, timedelta
+            start = datetime.strptime(args.start_date, '%Y-%m-%d')
+            end = datetime.strptime(args.end_date, '%Y-%m-%d')
+            current = start
+            chart_count = 0
+            
+            while current <= end:
+                date_str = current.strftime('%Y-%m-%d')
+                chart_filename = f"vrcx_hourly_{date_str}"
+                if args.unique:
+                    chart_filename += "_unique"
+                chart_file = output_dir / f"{chart_filename}.png"
+                create_daily_chart(db, str(chart_file), date_str, chart_label, args.unique)
+                chart_count += 1
+                current += timedelta(days=1)
+            
+            print(f"✓ Created {chart_count} daily charts")
+
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"
                 xlsx_file = output_dir / f"{filename_base}.xlsx"
