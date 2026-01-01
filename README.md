@@ -20,6 +20,7 @@ VRCX logs your VRChat activity to a local SQLite database. This tool lets you qu
 
 - Query attendance by date, date range, or time period
 - Generate hourly, daily, and weekly attendance reports
+- Filter by world or specific instance
 - Identify peak activity times and busiest days of the week
 - Count unique visitors (excluding repeat join/leave events)
 - Export data to CSV, Excel, and PNG charts
@@ -35,6 +36,11 @@ VRCX logs your VRChat activity to a local SQLite database. This tool lets you qu
 | `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
 | `--weekly` | Show week-by-week breakdown with day-of-week attendance |
 | `--unique` | Count unique visitors only once per day |
+| `--list-worlds` | List all worlds visited during a date range |
+| `--list-instances` | List all instances for a specific world (requires `--world-id`) |
+| `--world-id <id>` | Filter reports to a specific world ID |
+| `--world-name <name>` | Optional display name for the world in reports |
+| `--instance-id <id>` | Filter reports to a specific instance ID |
 | `--export-data` | Export data to CSV and Excel files (charts always generated) |
 | `--verbose` | Show verbose output including database information |
 
@@ -58,6 +64,12 @@ python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly
 
 # Count unique visitors only (not repeated joins)
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique
+
+# List all worlds visited in a date range
+python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --list-worlds
+
+# Filter by specific world
+python vrcx_query.py --date 2025-12-25 --world-id "wrld_..." --world-name "World Name"
 ```
 
 **See [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) for comprehensive examples and use cases.**
@@ -72,6 +84,12 @@ The `VRCXQuery` class provides methods for programmatic access:
 - `get_hour_by_hour_average(start_date_str, end_date_str)` - Average attendance across a date range
 - `get_people_in_instances_by_hour(date_str)` - Detailed breakdown
 - `get_instance_statistics(date_str)` - Instance visit stats
+- `get_unique_worlds(start_date_str, end_date_str)` - List all worlds visited in a date range
+- `get_unique_instances_for_world(world_id, start_date_str, end_date_str)` - List all instances for a specific world
+- `get_hour_by_hour_summary_for_world(world_id, date_str)` - Hourly stats for a specific world
+- `get_unique_visitors_by_hour_for_world(world_id, date_str)` - Unique hourly visitors for a specific world
+- `get_hour_by_hour_summary_for_instance(instance_id, date_str)` - Hourly stats for a specific instance
+- `get_unique_visitors_by_hour_for_instance(instance_id, date_str)` - Unique hourly visitors for a specific instance
 
 ## Documentation
 
@@ -135,6 +153,7 @@ VRCX_REPORTS_OUTPUT_PATH=./vrcx_exports
 
 **Default VRCX database locations:**
 - **Windows:** `C:\Users\<Username>\AppData\Roaming\VRCX\VRCX.sqlite3`
+- **Linux:** `~/.config/VRCX/VRCX.sqlite3`
 - **Linux:** `~/.config/VRCX/VRCX.sqlite3`
 - **macOS:** `~/Library/Application Support/VRCX/VRCX.sqlite3`
 
