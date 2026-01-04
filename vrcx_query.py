@@ -2013,10 +2013,10 @@ Common flags:
     * --verbose        Print table info
 """
 
-        parser = argparse.ArgumentParser(
-                description='Query VRCX database for VRChat activity analysis',
-                formatter_class=argparse.RawTextHelpFormatter,
-                epilog=epilog)
+    parser = argparse.ArgumentParser(
+        description='Query VRCX database for VRChat activity analysis',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog=epilog)
     parser.add_argument('--date', type=str, help='Query a specific date (YYYY-MM-DD format)')
     parser.add_argument('--start-date', type=str, help='Start date for range query (YYYY-MM-DD format)')
     parser.add_argument('--end-date', type=str, help='End date for range query (YYYY-MM-DD format)')
