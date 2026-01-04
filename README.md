@@ -44,6 +44,8 @@ VRCX logs your VRChat activity to a local SQLite database. This tool lets you qu
 | `--instance-id <id>` | Filter reports to a specific instance ID |
 | `--export-data` | Export data to CSV and Excel files (charts always generated) |
 | `--verbose` | Show verbose output including database information |
+| `--colour` / `--color` | Enable themed chart styling |
+| `--theme <name>` | Pick a theme (aurora-candy, neon-mango, lagoon-glow, citrus-pop, rainbow-gradient, or any custom theme in themes.json) |
 
 ## Quick Start Examples
 
@@ -156,11 +158,52 @@ VRCX_DB_FILE=VRCX.sqlite3
 
 # Output directory for reports (default: ./vrcx_exports)
 VRCX_REPORTS_OUTPUT_PATH=./vrcx_exports
+
+# Optional chart theme: aurora-candy, neon-mango, lagoon-glow, citrus-pop, rainbow-gradient, or your custom theme name
+VRCX_THEME=aurora-candy
+
+# Optional path to a JSON file containing custom themes (bundled default: ./themes.json)
+# JSON shape: { "my-theme": { "primary": "#123456", "secondary": "#abcdef", "accent": "#fedcba", "background": "#0f0f0f" } }
+VRCX_THEME_FILE=./themes.json
+
+# Optional inline JSON (useful in CI). Same shape as above.
+# VRCX_THEMES_JSON={"my-theme":{"primary":"#123456","secondary":"#abcdef","accent":"#fedcba","background":"#0f0f0f"}}
 ```
 
+### Custom Themes
+
+1. Create a JSON file (example: `themes.json`):
+
+```json
+{
+
+  "my-theme": {
+    "primary": "#123456",
+    "secondary": "#abcdef",
+    "accent": "#fedcba",
+    "background": "#0f0f0f"
+  }
+}
+```
+
+1. Point the script at it via `.env`:
+
+```ini
+VRCX_THEME_FILE=./themes.json
+VRCX_THEME=my-theme   # optional default
+```
+
+1. Run with your theme (or rely on `VRCX_THEME` as the default):
+
+```bash
+python vrcx_query.py --theme my-theme
+```
+
+If both `VRCX_THEME_FILE` and `VRCX_THEMES_JSON` are set, the file takes precedence. Custom themes must define `primary`, `secondary`, `accent`, and `background`.
+
 **Default VRCX database locations:**
+
 - **Windows:** `C:\Users\<Username>\AppData\Roaming\VRCX\VRCX.sqlite3`
-- **Linux:** `~/.config/VRCX/VRCX.sqlite3`
 - **Linux:** `~/.config/VRCX/VRCX.sqlite3`
 - **macOS:** `~/Library/Application Support/VRCX/VRCX.sqlite3`
 

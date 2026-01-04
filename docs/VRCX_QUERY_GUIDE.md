@@ -50,6 +50,43 @@ python vrcx_query.py --monthly 2024-12
 python vrcx_query.py --monthly 2024-12 --unique
 ```
 
+### Custom Themes
+
+You can supply your own chart themes via environment variables:
+
+```ini
+# .env
+VRCX_THEME_FILE=./themes.json   # JSON file with theme definitions
+VRCX_THEME=my-theme             # optional default theme name
+```
+
+Example `themes.json`:
+
+```json
+{
+    "my-theme": {
+        "primary": "#123456",
+        "secondary": "#abcdef",
+        "accent": "#fedcba",
+        "background": "#0f0f0f"
+    }
+}
+```
+
+Run with your theme (or rely on `VRCX_THEME` as default):
+
+```bash
+python vrcx_query.py --theme my-theme
+```
+
+Built-in themes available out of the box (from themes.json):
+
+- aurora-candy
+- neon-mango
+- lagoon-glow
+- citrus-pop
+- rainbow-gradient
+
 **Output:**
 
 - Console table with hour-by-hour summary
@@ -111,7 +148,7 @@ The main output shows:
 
 ### Example Output
 
-```
+```text
 Hour   Instance                           World                          Joins    Leaves   Net    People
 ────────────────────────────────────────────────────────────────────────────────────────────────────────
 12:00  wrld_12345:12345~region(us)       Home                               5        2       3        7
