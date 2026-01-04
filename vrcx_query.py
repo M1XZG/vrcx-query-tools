@@ -133,6 +133,60 @@ class VRCXDatabase:
 
 
 # ==============================================================================
+# Logo/Image Loading Functions
+# ==============================================================================
+
+def load_logo_from_file(file_path):
+    """
+    Load logo image from local file.
+    
+    Args:
+        file_path: Path to logo file (PNG, JPG, AVIF, etc.)
+    
+    Returns:
+        PIL Image object or None if loading fails
+    """
+    try:
+        from PIL import Image
+        img = Image.open(file_path)
+        return img
+    except ImportError:
+        print("WARNING: PIL not installed. Install with: pip install Pillow")
+        return None
+    except Exception as e:
+        print(f"ERROR: Could not load logo from {file_path}: {e}")
+        return None
+
+
+def load_logo_from_url(url):
+    """
+    Load logo image from URL.
+    
+    Args:
+        url: URL to logo image
+    
+    Returns:
+        PIL Image object or None if loading fails
+    """
+    try:
+        from PIL import Image
+        from io import BytesIO
+        import urllib.request
+        
+        with urllib.request.urlopen(url, timeout=5) as response:
+            img_data = response.read()
+        
+        img = Image.open(BytesIO(img_data))
+        return img
+    except ImportError:
+        print("WARNING: PIL not installed. Install with: pip install Pillow")
+        return None
+    except Exception as e:
+        print(f"WARNING: Could not load logo from URL {url}: {e}")
+        return None
+
+
+# ==============================================================================
 # Query Functions
 # ==============================================================================
 
@@ -1370,7 +1424,145 @@ def print_monthly_summary(db, start_date_str=None, end_date_str=None, is_unique=
 # Chart Generation Functions
 # ==============================================================================
 
-def create_average_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Average Hourly Attendance - All Visitors', is_unique=False):
+def apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5, max_width_ratio=0.8):
+    """
+    Apply a logo/watermark to a matplotlib figure.
+    
+    Args:
+        fig: matplotlib figure object
+        logo_img: PIL Image object
+        position: Position of logo ('upper right', 'upper left', 'lower right', 'lower left', 'center')
+        alpha: Transparency (0-1)
+        max_width_ratio: Maximum width as ratio of figure width (0-1)
+    """
+    try:
+        from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+        import matplotlib.pyplot as plt
+        
+        # Get figure size in inches and DPI
+        fig_width = fig.get_figwidth()
+        fig_height = fig.get_figheight()
+        dpi = fig.dpi
+        
+        # Calculate logo size based on figure width
+        logo_max_pixels = fig_width * dpi * max_width_ratio
+        aspect = logo_img.size[1] / logo_img.size[0]
+        new_width = int(logo_max_pixels)
+        new_height = int(new_width * aspect)
+        
+        # Check if height exceeds figure height, constrain if needed
+        fig_height_pixels = fig_height * dpi * max_width_ratio
+        if new_height > fig_height_pixels:
+            new_height = int(fig_height_pixels)
+            new_width = int(new_height / aspect)
+        
+        logo_resized = logo_img.resize((new_width, new_height))
+        
+        # Create offset image
+        imagebox = OffsetImage(logo_resized, zoom=1, alpha=alpha)
+        
+        # Position mapping
+        positions = {
+            'upper right': (0.98, 0.98),
+            'upper left': (0.02, 0.98),
+            'lower right': (0.98, 0.02),
+            'lower left': (0.02, 0.02),
+            'center': (0.5, 0.5)
+        }
+        
+        xy = positions.get(position, positions['center'])
+        
+        # Add logo to figure
+        ab = AnnotationBbox(imagebox, xy, xycoords='axes fraction', 
+                           boxcoords='axes fraction', frameon=False)
+        
+        ax = fig.get_axes()[0]  # Get first axis
+        ax.add_artist(ab)
+        
+    except ImportError:
+        pass  # PIL not available, skip logo
+    except Exception as e:
+        print(f"WARNING: Could not apply logo: {e}")
+
+
+def apply_chart_background(ax, bg_color=None):
+    """
+    Apply background color to chart axes.
+    
+    Args:
+        ax: matplotlib axes object
+        bg_color: Color code (e.g., '#f5f5f5', 'lightgray', or None for default)
+    """
+    if bg_color:
+        ax.set_facecolor(bg_color)
+
+
+# Theme presets are loaded from JSON (themes.json by default)
+THEMES = {}
+
+
+def get_theme(theme_name):
+    """Return theme dict or None if not found."""
+    if not theme_name:
+        return None
+    return THEMES.get(theme_name)
+
+
+def load_custom_themes():
+    """Load themes from file (env override or bundled themes.json) and optional inline JSON."""
+    custom = {}
+    theme_file = os.getenv('VRCX_THEME_FILE') or str(Path(__file__).parent / 'themes.json')
+    theme_json = os.getenv('VRCX_THEMES_JSON')
+
+    def merge_data(data, source_label):
+        count = 0
+        if isinstance(data, dict):
+            for name, cfg in data.items():
+                if isinstance(cfg, dict) and {'primary', 'secondary', 'accent', 'background'} <= set(cfg.keys()):
+                    custom[name] = cfg
+                    count += 1
+                else:
+                    print(f"WARNING: Theme '{name}' ignored (must include primary, secondary, accent, background)")
+            if count:
+                print(f"[OK] Loaded {count} theme(s) from {source_label}")
+        elif data is not None:
+            print(f"WARNING: Theme data from {source_label} must be a JSON object of theme definitions; skipping")
+
+    # File source
+    if theme_file:
+        path = Path(theme_file).expanduser()
+        if path.exists():
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                merge_data(data, f"file:{path}")
+            except Exception as e:
+                print(f"WARNING: Failed to load themes from {path}: {e}")
+        else:
+            print(f"WARNING: Theme file '{path}' not found; no file-based themes loaded")
+
+    # Inline JSON source
+    if theme_json:
+        try:
+            data = json.loads(theme_json)
+            merge_data(data, 'env:VRCX_THEMES_JSON')
+        except Exception as e:
+            print(f"WARNING: Failed to parse VRCX_THEMES_JSON: {e}")
+
+    return custom
+
+
+# Merge themes from file/env before CLI parsing
+THEMES.update(load_custom_themes())
+
+# Optional default theme from environment
+DEFAULT_THEME_NAME = os.getenv('VRCX_THEME')
+if DEFAULT_THEME_NAME and DEFAULT_THEME_NAME not in THEMES:
+    print(f"WARNING: VRCX_THEME '{DEFAULT_THEME_NAME}' not found among available themes; ignoring")
+    DEFAULT_THEME_NAME = None
+
+
+def create_average_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Average Hourly Attendance - All Visitors', is_unique=False, logo_img=None, use_color=False, theme=None):
     """Create a bar chart showing average attendance by hour."""
     try:
         import matplotlib.pyplot as plt
@@ -1402,7 +1594,16 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
     
     # Create chart
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(all_hours, avg_people, color='#1f77b4', width=0.8)
+    
+    # Apply background color if color mode enabled
+    if use_color:
+        bg_color = (theme or {}).get('background', '#f5f5f5')
+        bar_color = (theme or {}).get('primary', '#2E86AB')  # More vibrant blue
+        apply_chart_background(ax, bg_color)
+    else:
+        bar_color = '#1f77b4'
+    
+    ax.bar(all_hours, avg_people, color=bar_color, width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel('Average People', fontsize=12)
     ax.set_title('Average People by Hour', fontsize=14, fontweight='bold')
@@ -1411,8 +1612,13 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
+    info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
     fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10, 
-             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+    
+    # Apply logo if provided
+    if logo_img and use_color:
+        apply_logo_to_figure(fig, logo_img, position='upper right', alpha=0.25)
     
     plt.subplots_adjust(bottom=0.12)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -1421,7 +1627,7 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
     print(f"[OK] Chart saved to {output_file}")
 
 
-def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Attendance - All Visitors', is_unique=False):
+def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Attendance - All Visitors', is_unique=False, logo_img=None, use_color=False, theme=None):
     """Create a bar chart showing hourly attendance for a specific day."""
     try:
         import matplotlib.pyplot as plt
@@ -1454,7 +1660,16 @@ def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Atten
     
     # Create chart
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(all_hours, people, color='#1f77b4', width=0.8)
+    
+    # Apply background color if color mode enabled
+    if use_color:
+        bg_color = (theme or {}).get('background', '#f5f5f5')
+        bar_color = (theme or {}).get('primary', '#2E86AB')
+        apply_chart_background(ax, bg_color)
+    else:
+        bar_color = '#1f77b4'
+    
+    ax.bar(all_hours, people, color=bar_color, width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel(y_label, fontsize=12)
     ax.set_title(f'Hourly Attendance - {date_str}', fontsize=14, fontweight='bold')
@@ -1463,8 +1678,13 @@ def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Atten
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
+    info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
     fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+    
+    # Apply logo if provided
+    if logo_img and use_color:
+        apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5)
     
     plt.subplots_adjust(bottom=0.12)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -1473,7 +1693,7 @@ def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Atten
     print(f"[OK] Chart saved to {output_file}")
 
 
-def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None, chart_label='Hourly Attendance - Instance', is_unique=False):
+def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None, chart_label='Hourly Attendance - Instance', is_unique=False, use_color=False, theme=None):
     """Create a bar chart showing hourly attendance for a specific instance."""
     try:
         import matplotlib.pyplot as plt
@@ -1509,7 +1729,14 @@ def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None,
     
     # Create chart
     fig, ax = plt.subplots(figsize=(12, 7))
-    ax.bar(all_hours, people, color='#ff7f0e', width=0.8)
+    if use_color:
+        bg_color = (theme or {}).get('background', '#f5f5f5')
+        bar_color = (theme or {}).get('primary', '#ff7f0e')
+        apply_chart_background(ax, bg_color)
+    else:
+        bar_color = '#ff7f0e'
+
+    ax.bar(all_hours, people, color=bar_color, width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel(y_label, fontsize=12)
     ax.set_title(f'Instance Hourly Attendance - {date_str}\n{instance_id}', fontsize=12, fontweight='bold')
@@ -1518,8 +1745,9 @@ def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None,
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
+    info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
     fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
     
     plt.subplots_adjust(bottom=0.15)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -1528,7 +1756,7 @@ def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None,
     print(f"[OK] Chart saved to {output_file}")
 
 
-def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Day of Week - All Visitors', is_unique=False):
+def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Day of Week - All Visitors', is_unique=False, logo_img=None, use_color=False, theme=None):
     """Create a bar chart showing average attendance by day of week."""
     try:
         import matplotlib.pyplot as plt
@@ -1563,7 +1791,16 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     
     # Create chart
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(day_names, avg_people, color='#2ca02c', width=0.6)
+    
+    # Apply background color if color mode enabled
+    if use_color:
+        bg_color = (theme or {}).get('background', '#f5f5f5')
+        bar_color = (theme or {}).get('primary', '#27AE60')
+        apply_chart_background(ax, bg_color)
+    else:
+        bar_color = '#2ca02c'
+    
+    ax.bar(day_names, avg_people, color=bar_color, width=0.6)
     ax.set_xlabel('Day of Week', fontsize=12)
     ax.set_ylabel('Average Unique People', fontsize=12)
     ax.set_title(f'Average Attendance by Day of Week\n{start_date_str} to {end_date_str or start_date_str}', 
@@ -1572,8 +1809,13 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
+    info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
     fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+    
+    # Apply logo if provided
+    if logo_img and use_color:
+        apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5)
     
     plt.subplots_adjust(bottom=0.15)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -1582,7 +1824,7 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     print(f"[OK] Chart saved to {output_file}")
 
 
-def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Monthly Daily Breakdown - All Visitors', is_unique=False, run_ts=None):
+def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Monthly Daily Breakdown - All Visitors', is_unique=False, run_ts=None, logo_img=None, use_color=False, theme=None):
     """Create bar charts for each month showing daily totals."""
     try:
         import matplotlib.pyplot as plt
@@ -1625,7 +1867,16 @@ def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None
         values = [days_dict.get(day, 0) for day in day_numbers]
 
         fig, ax = plt.subplots(figsize=(12, 6))
-        ax.bar(day_numbers, values, color='#4e79a7', width=0.8)
+        
+        # Apply background color if color mode enabled
+        if use_color:
+            bg_color = (theme or {}).get('background', '#f5f5f5')
+            bar_color = (theme or {}).get('primary', '#2E86AB')
+            apply_chart_background(ax, bg_color)
+        else:
+            bar_color = '#4e79a7'
+        
+        ax.bar(day_numbers, values, color=bar_color, width=0.8)
         ax.set_xlabel('Day of Month', fontsize=12)
         ylabel = 'Unique People' if is_unique else 'People'
         ax.set_ylabel(ylabel, fontsize=12)
@@ -1633,8 +1884,13 @@ def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None
         ax.set_xticks(day_numbers)
         ax.grid(axis='y', alpha=0.3)
 
+        info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
         fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
-                 bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+
+        # Apply logo if provided
+        if logo_img and use_color:
+            apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5)
 
         plt.subplots_adjust(bottom=0.15)
 
@@ -1648,7 +1904,7 @@ def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None
     return chart_files
 
 
-def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
+def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False, logo_img=None, use_color=False, theme=None):
     """Create separate bar charts for each week showing day-of-week attendance."""
     try:
         import matplotlib.pyplot as plt
@@ -1698,7 +1954,15 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None,
         
         # Create chart
         fig, ax = plt.subplots(figsize=(10, 7))
-        ax.bar(day_names, people, color='#ff7f0e', width=0.6)
+
+        if use_color:
+            bg_color = (theme or {}).get('background', '#f5f5f5')
+            bar_color = (theme or {}).get('primary', '#ff7f0e')
+            apply_chart_background(ax, bg_color)
+        else:
+            bar_color = '#ff7f0e'
+
+        ax.bar(day_names, people, color=bar_color, width=0.6)
         ax.set_xlabel('Day of Week', fontsize=12)
         ax.set_ylabel('Unique People', fontsize=12)
         ax.set_title(f'Weekly Attendance: {week_start} to {week_end}', 
@@ -1707,8 +1971,13 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None,
         ax.grid(axis='y', alpha=0.3)
         
         # Add info box at bottom
+        info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
         fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
-                 bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+                 bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+
+        # Apply logo if provided
+        if logo_img and use_color:
+            apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5)
         
         plt.subplots_adjust(bottom=0.15)
         
@@ -1723,7 +1992,7 @@ def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None,
     return chart_files
 
 
-def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
+def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False, logo_img=None, use_color=False, theme=None):
     """Create a single combined chart with all weeks as subplots."""
     try:
         import matplotlib.pyplot as plt
@@ -1793,7 +2062,14 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
         people = [week_data[i] for i in day_indices]
         
         # Create bar chart
-        ax.bar(day_names, people, color='#ff7f0e', width=0.6)
+        if use_color:
+            bg_color = (theme or {}).get('background', '#f5f5f5')
+            bar_color = (theme or {}).get('primary', '#ff7f0e')
+            apply_chart_background(ax, bg_color)
+        else:
+            bar_color = '#ff7f0e'
+
+        ax.bar(day_names, people, color=bar_color, width=0.6)
         ax.set_title(f'{week_start} to {week_end}', fontsize=12, fontweight='bold')
         ax.set_xlabel('Day of Week', fontsize=10)
         ax.set_ylabel('Unique People', fontsize=10)
@@ -1809,8 +2085,13 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
                  fontsize=16, fontweight='bold', y=0.99)
     
     # Add info box at bottom
+    info_face = (theme or {}).get('accent', '#f0f0f0') if use_color else '#f0f0f0'
     fig.text(0.5, 0.01, chart_label, ha='center', fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+             bbox=dict(boxstyle='round', facecolor=info_face, edgecolor='#cccccc', pad=0.5))
+
+    # Apply logo if provided
+    if logo_img and use_color:
+        apply_logo_to_figure(fig, logo_img, position='center', alpha=0.5)
     
     plt.subplots_adjust(bottom=0.08)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -2220,6 +2501,8 @@ Common flags:
     * --verbose        Print table info
 """
 
+    theme_choices = sorted(THEMES.keys())
+
     parser = argparse.ArgumentParser(
         description='Query VRCX database for VRChat activity analysis',
         formatter_class=argparse.RawTextHelpFormatter,
@@ -2239,8 +2522,18 @@ Common flags:
     parser.add_argument('--world-name', type=str, help='Optional display name for the world in reports')
     parser.add_argument('--list-instances', action='store_true', help='List all instances for a specific world (requires --world-id)')
     parser.add_argument('--instance-id', '--instance', type=str, dest='instance_id', help='Filter reports to a specific instance (full instance ID from location field)')
+    parser.add_argument('--colour', '--color', action='store_true', dest='use_color', help='Add color and styling to charts')
+    parser.add_argument('--theme', choices=theme_choices, default=DEFAULT_THEME_NAME, help='Apply a named colour theme (implies --colour)')
     
     args = parser.parse_args()
+    
+    # Determine theme and color mode
+    theme = get_theme(args.theme)
+    if theme and not args.use_color:
+        args.use_color = True
+
+    # Logos disabled (file/url removed)
+    logo_img = None
     
     # Determine dates to query
     is_date_range = args.start_date and args.end_date
@@ -2408,7 +2701,7 @@ Common flags:
             filename_base += f"_{run_ts}"
 
             chart_label = "Monthly Daily Breakdown - Unique Visitors" if args.unique else "Monthly Daily Breakdown - All Visitors"
-            chart_files = create_monthly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique, run_ts)
+            chart_files = create_monthly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique, run_ts, logo_img, args.use_color, theme)
             print(f"[OK] Created {len(chart_files)} monthly charts")
 
             if args.export_data:
@@ -2426,10 +2719,10 @@ Common flags:
             filename_base += f"_{run_ts}"
 
             chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
-            chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
+            chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique, logo_img, args.use_color, theme)
             print(f"[OK] Created {len(chart_files)} individual weekly charts")
             combined_chart = output_dir / f"{filename_base}_combined.png"
-            create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique)
+            create_combined_weekly_chart(db, str(combined_chart), args.start_date, args.end_date, chart_label, args.unique, logo_img, args.use_color, theme)
 
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"
@@ -2447,7 +2740,7 @@ Common flags:
 
             chart_label = "Day of Week - Unique Visitors" if args.unique else "Day of Week - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
-            create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
+            create_day_of_week_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique, logo_img, args.use_color, theme)
 
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"
@@ -2465,7 +2758,7 @@ Common flags:
 
             chart_label = "Average Hourly Attendance - Unique Visitors" if args.unique else "Average Hourly Attendance - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
-            create_average_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique)
+            create_average_chart(db, str(chart_file), args.start_date, args.end_date, chart_label, args.unique, logo_img, args.use_color, theme)
 
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"
@@ -2486,7 +2779,7 @@ Common flags:
             if args.date:
                 # Single day for instance
                 chart_file = output_dir / f"{filename_base}.png"
-                create_daily_chart_for_instance(db, str(chart_file), args.instance_id, args.date, chart_label, args.unique)
+                create_daily_chart_for_instance(db, str(chart_file), args.instance_id, args.date, chart_label, args.unique, args.use_color, theme)
                 
                 if args.export_data:
                     csv_file = output_dir / f"{filename_base}.csv"
@@ -2505,7 +2798,7 @@ Common flags:
                         chart_filename += "_unique"
                     chart_filename += f"_{run_ts}"
                     chart_file = output_dir / f"{chart_filename}.png"
-                    create_daily_chart_for_instance(db, str(chart_file), args.instance_id, date_str, chart_label, args.unique)
+                    create_daily_chart_for_instance(db, str(chart_file), args.instance_id, date_str, chart_label, args.unique, args.use_color, theme)
                     chart_count += 1
                     current += timedelta(days=1)
                 
@@ -2539,7 +2832,7 @@ Common flags:
                     chart_filename += "_unique"
                 chart_filename += f"_{run_ts}"
                 chart_file = output_dir / f"{chart_filename}.png"
-                create_daily_chart(db, str(chart_file), date_str, chart_label, args.unique)
+                create_daily_chart(db, str(chart_file), date_str, chart_label, args.unique, logo_img, args.use_color, theme)
                 chart_count += 1
                 current += timedelta(days=1)
             
@@ -2561,7 +2854,7 @@ Common flags:
 
             chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
-            create_daily_chart(db, str(chart_file), args.date, chart_label, args.unique)
+            create_daily_chart(db, str(chart_file), args.date, chart_label, args.unique, logo_img, args.use_color, theme)
 
             if args.export_data:
                 csv_file = output_dir / f"{filename_base}.csv"

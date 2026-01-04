@@ -1,0 +1,32 @@
+{
+  "aurora-candy": {
+    "primary": "#8BF7EE",
+    "secondary": "#DD6AC2",
+    "accent": "#FBE980",
+    "background": "#E4C1E8"
+  },
+  "neon-mango": {
+    "primary": "#FFD552",
+    "secondary": "#D88595",
+    "accent": "#568CE3",
+    "background": "#F6CDBB"
+  },
+  "lagoon-glow": {
+    "primary": "#78DFDE",
+    "secondary": "#E89CAA",
+    "accent": "#FAE3AD",
+    "background": "#DDEDf0"
+  },
+  "citrus-pop": {
+    "primary": "#F9D955",
+    "secondary": "#9083F0",
+    "accent": "#E87C8B",
+    "background": "#DCFADB"
+  },
+  "rainbow-gradient": {
+    "primary": "#FF5E5B",      
+    "secondary": "#F0C419",    
+    "accent": "#4BC0C8",      
+    "background": "#FDF1FF"    
+  }
+}
