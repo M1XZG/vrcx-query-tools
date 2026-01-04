@@ -1994,8 +1994,29 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
 # ==============================================================================
 
 def main():
-    """Main entry point."""
-    parser = argparse.ArgumentParser(description='Query VRCX database for VRChat activity analysis')
+        """Main entry point."""
+        epilog = """
+Modes (choose by flags):
+    * Default / --date                 Hourly chart for a single date
+    * --start-date --end-date          Hourly charts for each day in range
+    * --average                        Average hourly across range
+    * --day-of-week                    Average by day of week across range
+    * --weekly                         Week-by-week day-of-week breakdown (also makes combined chart)
+    * --instance-id / --instance       Hourly for a specific instance (single date or range)
+    * --world-id                       Hourly for a specific world (single date or range)
+    * --list-worlds                    List worlds visited in range
+    * --list-instances                 List instances for a world in range (requires --world-id)
+
+Common flags:
+    * --unique         Count unique visitors (not total joins)
+    * --export-data    Also write CSV/XLSX alongside charts
+    * --verbose        Print table info
+"""
+
+        parser = argparse.ArgumentParser(
+                description='Query VRCX database for VRChat activity analysis',
+                formatter_class=argparse.RawTextHelpFormatter,
+                epilog=epilog)
     parser.add_argument('--date', type=str, help='Query a specific date (YYYY-MM-DD format)')
     parser.add_argument('--start-date', type=str, help='Start date for range query (YYYY-MM-DD format)')
     parser.add_argument('--end-date', type=str, help='End date for range query (YYYY-MM-DD format)')
