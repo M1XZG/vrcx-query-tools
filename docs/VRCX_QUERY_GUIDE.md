@@ -43,8 +43,11 @@ python vrcx_query.py 2024-12-30
 # Show daily breakdown for current month
 python vrcx_query.py --monthly
 
-# Show daily breakdown for a specific date range
-python vrcx_query.py --monthly --start-date 2024-12-01 --end-date 2024-12-31
+# Show daily breakdown for a specific month (YYYY-MM format)
+python vrcx_query.py --monthly 2024-12
+
+# Show daily breakdown for a specific month with unique visitors only
+python vrcx_query.py --monthly 2024-12 --unique
 ```
 
 **Output:**
