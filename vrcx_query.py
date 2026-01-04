@@ -1293,23 +1293,24 @@ def create_average_chart(db, output_file, start_date_str=None, end_date_str=None
         print("No data to chart")
         return
     
-    # Extract data
-    hours = [row['hour'] for row in summary]
-    
     # Get the correct column name based on whether it's unique or not
-    if is_unique:
-        avg_people = [row['avg_unique_visitors'] or 0 for row in summary]
-    else:
-        avg_people = [row['avg_unique_people'] or 0 for row in summary]
+    col = 'avg_unique_visitors' if is_unique else 'avg_unique_people'
+    
+    # Extract data and create a dict for easy lookup
+    data_dict = {row['hour']: row[col] or 0 for row in summary}
+    
+    # Create arrays for all 24 hours, filling missing hours with 0
+    all_hours = list(range(24))
+    avg_people = [data_dict.get(h, 0) for h in all_hours]
     
     # Create chart
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(hours, avg_people, color='#1f77b4', width=0.8)
+    ax.bar(all_hours, avg_people, color='#1f77b4', width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel('Average People', fontsize=12)
     ax.set_title('Average People by Hour', fontsize=14, fontweight='bold')
-    ax.set_xticks(hours)
-    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.set_xticks(all_hours)
+    ax.set_xticklabels([f'{h:02d}' for h in all_hours])
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
@@ -1347,18 +1348,21 @@ def create_daily_chart(db, output_file, date_str=None, chart_label='Hourly Atten
         print("No data to chart")
         return
     
-    # Extract data
-    hours = [row['hour'] for row in summary]
-    people = [row[col] or 0 for row in summary]
+    # Extract data and create a dict for easy lookup
+    data_dict = {row['hour']: row[col] or 0 for row in summary}
+    
+    # Create arrays for all 24 hours, filling missing hours with 0
+    all_hours = list(range(24))
+    people = [data_dict.get(h, 0) for h in all_hours]
     
     # Create chart
     fig, ax = plt.subplots(figsize=(10, 7))
-    ax.bar(hours, people, color='#1f77b4', width=0.8)
+    ax.bar(all_hours, people, color='#1f77b4', width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel(y_label, fontsize=12)
     ax.set_title(f'Hourly Attendance - {date_str}', fontsize=14, fontweight='bold')
-    ax.set_xticks(hours)
-    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.set_xticks(all_hours)
+    ax.set_xticklabels([f'{h:02d}' for h in all_hours])
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
@@ -1399,18 +1403,21 @@ def create_daily_chart_for_instance(db, output_file, instance_id, date_str=None,
         print("No data to chart")
         return
     
-    # Extract data
-    hours = [row['hour'] for row in summary]
-    people = [row[col] or 0 for row in summary]
+    # Extract data and create a dict for easy lookup
+    data_dict = {row['hour']: row[col] or 0 for row in summary}
+    
+    # Create arrays for all 24 hours, filling missing hours with 0
+    all_hours = list(range(24))
+    people = [data_dict.get(h, 0) for h in all_hours]
     
     # Create chart
     fig, ax = plt.subplots(figsize=(12, 7))
-    ax.bar(hours, people, color='#ff7f0e', width=0.8)
+    ax.bar(all_hours, people, color='#ff7f0e', width=0.8)
     ax.set_xlabel('Hour', fontsize=12)
     ax.set_ylabel(y_label, fontsize=12)
     ax.set_title(f'Instance Hourly Attendance - {date_str}\n{instance_id}', fontsize=12, fontweight='bold')
-    ax.set_xticks(hours)
-    ax.set_xticklabels([f'{h:02d}' for h in hours])
+    ax.set_xticks(all_hours)
+    ax.set_xticklabels([f'{h:02d}' for h in all_hours])
     ax.grid(axis='y', alpha=0.3)
     
     # Add info box at bottom
