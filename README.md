@@ -35,6 +35,7 @@ VRCX logs your VRChat activity to a local SQLite database. This tool lets you qu
 | `--average` | Calculate average attendance by hour across date range |
 | `--day-of-week` | Show average attendance by day of week (Sunday-Saturday) |
 | `--weekly` | Show week-by-week breakdown with day-of-week attendance |
+| `--monthly` | Show daily totals grouped by month (defaults to current month) |
 | `--unique` | Count unique visitors only once per day |
 | `--list-worlds` | List all worlds visited during a date range |
 | `--list-instances` | List all instances for a specific world (requires `--world-id`) |
@@ -61,6 +62,12 @@ python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week
 
 # Week-by-week breakdown
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --weekly
+
+# Daily breakdown grouped by month (defaults to current month)
+python vrcx_query.py --monthly
+
+# Monthly report for specific date range
+python vrcx_query.py --monthly --start-date 2025-12-01 --end-date 2025-12-31
 
 # Count unique visitors only (not repeated joins)
 python vrcx_query.py --start-date 2025-12-01 --end-date 2025-12-31 --day-of-week --unique

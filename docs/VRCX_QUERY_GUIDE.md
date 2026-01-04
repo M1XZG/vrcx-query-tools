@@ -6,7 +6,8 @@ This guide helps you query the VRCX SQLite database to analyze your VRChat activ
 
 - Track your location/instance timeline throughout the day
 - Count how many people were in each instance hour-by-hour
-- Export data to spreadsheets for further analysis
+- Analyze daily/weekly/monthly attendance patterns
+- Export data to spreadsheets and PNG charts for further analysis
 
 ---
 
@@ -38,6 +39,12 @@ python vrcx_query.py
 
 # Run for specific date
 python vrcx_query.py 2024-12-30
+
+# Show daily breakdown for current month
+python vrcx_query.py --monthly
+
+# Show daily breakdown for a specific date range
+python vrcx_query.py --monthly --start-date 2024-12-01 --end-date 2024-12-31
 ```
 
 **Output:**
