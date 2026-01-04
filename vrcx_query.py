@@ -222,12 +222,17 @@ class VRCXQuery:
         """
         Get hour-by-hour summary of instances and people for a specific date.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         
         Returns data like:
         Hour | Unique People
         """
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
         
         query = """
         WITH hours AS (
@@ -240,14 +245,15 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(*), 0) as unique_people
+            COUNT(j.display_name) as unique_people
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
-        results = self.db.execute(query, (date_str,))
+        results = self.db.execute(query, (date_str, current_hour))
         return results
     
     def get_hour_by_hour_average(self, start_date_str=None, end_date_str=None):
@@ -455,12 +461,17 @@ class VRCXQuery:
         Get hour-by-hour count of unique visitors (each person counted once per hour).
         Each person is counted only once per hour, regardless of how many times they joined/left.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         
         Returns data like:
         Hour | Unique Visitors
         """
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
         
         query = """
         WITH hours AS (
@@ -473,14 +484,15 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+            COUNT(DISTINCT j.display_name) as unique_visitors
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
-        results = self.db.execute(query, (date_str,))
+        results = self.db.execute(query, (date_str, current_hour))
         return results
     
     def get_unique_visitors_daily(self, start_date_str=None, end_date_str=None):
@@ -696,6 +708,7 @@ class VRCXQuery:
         """
         Get hour-by-hour summary for a specific instance on a given date.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         
         Args:
             instance_id: Full instance ID (location field value)
@@ -707,6 +720,10 @@ class VRCXQuery:
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
+        
         query = """
         WITH hours AS (
             SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
@@ -718,22 +735,24 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(*), 0) as unique_people
+            COUNT(j.display_name) as unique_people
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
             AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
             AND j.location = ?
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
-        results = self.db.execute(query, (date_str, instance_id))
+        results = self.db.execute(query, (date_str, instance_id, current_hour))
         return results
     
     def get_unique_visitors_by_hour_for_instance(self, instance_id, date_str=None):
         """
         Get hour-by-hour count of unique visitors for a specific instance.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         
         Args:
             instance_id: Full instance ID (location field value)
@@ -745,6 +764,10 @@ class VRCXQuery:
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
+        
         query = """
         WITH hours AS (
             SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
@@ -756,16 +779,17 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+            COUNT(DISTINCT j.display_name) as unique_visitors
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
             AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
             AND j.location = ?
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
-        results = self.db.execute(query, (date_str, instance_id))
+        results = self.db.execute(query, (date_str, instance_id, current_hour))
         return results
     
     def get_users_for_instance(self, instance_id, start_date_str=None, end_date_str=None):
@@ -805,6 +829,7 @@ class VRCXQuery:
         """
         Get hour-by-hour summary for a specific world on a given date.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         Extracts world_id from location field (format: wrld_xxx:instance~...)
         
         Args:
@@ -817,6 +842,10 @@ class VRCXQuery:
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
+        
         query = """
         WITH hours AS (
             SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
@@ -828,24 +857,26 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(*), 0) as unique_people
+            COUNT(j.display_name) as unique_people
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
             AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
             AND SUBSTR(j.location, 1, ?) = ?
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
         # Extract world_id length for substring matching
         world_id_len = len(world_id)
-        results = self.db.execute(query, (date_str, world_id_len, world_id))
+        results = self.db.execute(query, (date_str, world_id_len, world_id, current_hour))
         return results
     
     def get_unique_visitors_by_hour_for_world(self, world_id, date_str=None):
         """
         Get hour-by-hour count of unique visitors for a specific world.
         Includes all 24 hours (0-23), with 0 for hours with no data.
+        For today's date, only shows hours that have passed.
         Extracts world_id from location field (format: wrld_xxx:instance~...)
         
         Args:
@@ -858,6 +889,10 @@ class VRCXQuery:
         if date_str is None:
             date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Check if this is today's date
+        is_today = date_str == datetime.now().strftime('%Y-%m-%d')
+        current_hour = datetime.now().hour if is_today else 23
+        
         query = """
         WITH hours AS (
             SELECT 0 AS hour UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
@@ -869,18 +904,19 @@ class VRCXQuery:
         )
         SELECT 
             h.hour,
-            COALESCE(COUNT(DISTINCT j.display_name), 0) as unique_visitors
+            COUNT(DISTINCT j.display_name) as unique_visitors
         FROM hours h
         LEFT JOIN gamelog_join_leave j ON DATE(j.created_at) = ? 
             AND CAST(strftime('%H', j.created_at) AS INTEGER) = h.hour
             AND SUBSTR(j.location, 1, ?) = ?
+        WHERE h.hour <= ?
         GROUP BY h.hour
         ORDER BY h.hour ASC
         """
         
         # Extract world_id length for substring matching
         world_id_len = len(world_id)
-        results = self.db.execute(query, (date_str, world_id_len, world_id))
+        results = self.db.execute(query, (date_str, world_id_len, world_id, current_hour))
         return results
 
 def print_location_history(db, date_str=None):
