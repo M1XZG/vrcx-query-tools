@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import argparse
+import calendar
 
 # Load environment variables from .env file
 try:
@@ -405,6 +406,33 @@ class VRCXQuery:
         
         results = self.db.execute(query, (start_date_str, end_date_str))
         return results
+
+    def get_monthly_daily_breakdown(self, start_date_str=None, end_date_str=None):
+        """
+        Get total attendance per day, grouped by month.
+        Each row represents a calendar day within the range.
+        """
+        if start_date_str is None or end_date_str is None:
+            today = datetime.now()
+            first_day = today.replace(day=1).strftime('%Y-%m-%d')
+            last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime('%Y-%m-%d')
+            start_date_str = start_date_str or first_day
+            end_date_str = end_date_str or last_day
+
+        query = """
+        SELECT 
+            DATE(created_at) as date,
+            CAST(strftime('%d', created_at) AS INTEGER) as day_of_month,
+            strftime('%Y-%m', created_at) as month_label,
+            COUNT(*) as unique_people
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ?
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at)
+        """
+
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
     
     def get_people_in_instances_by_hour(self, date_str=None):
         """
@@ -641,6 +669,33 @@ class VRCXQuery:
         ORDER BY week_start, day_of_week
         """
         
+        results = self.db.execute(query, (start_date_str, end_date_str))
+        return results
+
+    def get_unique_visitors_monthly(self, start_date_str=None, end_date_str=None):
+        """
+        Get unique visitors per day, grouped by month.
+        Each person is counted once per calendar day.
+        """
+        if start_date_str is None or end_date_str is None:
+            today = datetime.now()
+            first_day = today.replace(day=1).strftime('%Y-%m-%d')
+            last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime('%Y-%m-%d')
+            start_date_str = start_date_str or first_day
+            end_date_str = end_date_str or last_day
+
+        query = """
+        SELECT 
+            DATE(created_at) as date,
+            CAST(strftime('%d', created_at) AS INTEGER) as day_of_month,
+            strftime('%Y-%m', created_at) as month_label,
+            COUNT(DISTINCT display_name) as unique_visitors
+        FROM gamelog_join_leave
+        WHERE DATE(created_at) BETWEEN ? AND ?
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at)
+        """
+
         results = self.db.execute(query, (start_date_str, end_date_str))
         return results
     
@@ -1269,6 +1324,48 @@ def print_day_of_week_average(db, start_date_str=None, end_date_str=None, is_uni
     print()
 
 
+def print_monthly_summary(db, start_date_str=None, end_date_str=None, is_unique=False):
+    """Print daily totals grouped by month for the given range."""
+    today = datetime.now()
+    if start_date_str is None or end_date_str is None:
+        first_day = today.replace(day=1).strftime('%Y-%m-%d')
+        last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime('%Y-%m-%d')
+        start_date_str = start_date_str or first_day
+        end_date_str = end_date_str or last_day
+
+    query = VRCXQuery(db)
+    if is_unique:
+        summary = query.get_unique_visitors_monthly(start_date_str, end_date_str)
+        col = 'unique_visitors'
+        label = 'Unique Visitors'
+    else:
+        summary = query.get_monthly_daily_breakdown(start_date_str, end_date_str)
+        col = 'unique_people'
+        label = 'People'
+
+    if not summary:
+        print("No data found for this date range")
+        return
+
+    print(f"\n{'='*60}")
+    print(f"Monthly Daily Breakdown")
+    print(f"{start_date_str} to {end_date_str}")
+    print(f"{'='*60}\n")
+
+    current_month = None
+    for row in summary:
+        month_label = row['month_label']
+        if month_label != current_month:
+            if current_month is not None:
+                print()  # blank line between months
+            print(f"Month: {month_label}")
+            print("-" * 40)
+            current_month = month_label
+        print(f"  Day {row['day_of_month']:>2}: {row[col] or 0:>6} {label}")
+
+    print()
+
+
 # ==============================================================================
 # Chart Generation Functions
 # ==============================================================================
@@ -1485,6 +1582,72 @@ def create_day_of_week_chart(db, output_file, start_date_str=None, end_date_str=
     print(f"[OK] Chart saved to {output_file}")
 
 
+def create_monthly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Monthly Daily Breakdown - All Visitors', is_unique=False, run_ts=None):
+    """Create bar charts for each month showing daily totals."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')
+    except ImportError:
+        print("WARNING: matplotlib not installed. Install with: pip install matplotlib")
+        return []
+
+    from pathlib import Path
+    query = VRCXQuery(db)
+    if is_unique:
+        summary = query.get_unique_visitors_monthly(start_date_str, end_date_str)
+        col = 'unique_visitors'
+    else:
+        summary = query.get_monthly_daily_breakdown(start_date_str, end_date_str)
+        col = 'unique_people'
+
+    if not summary:
+        print("No data to chart")
+        return []
+
+    # Group data by month
+    months = {}
+    for row in summary:
+        month_label = row['month_label']
+        months.setdefault(month_label, {})[row['day_of_month']] = row[col] or 0
+
+    chart_files = []
+    for month_label, days_dict in sorted(months.items()):
+        # Determine number of days in this month
+        try:
+            month_start = datetime.strptime(f"{month_label}-01", "%Y-%m-%d")
+            days_in_month = calendar.monthrange(month_start.year, month_start.month)[1]
+        except ValueError:
+            # Fallback: use observed days only
+            days_in_month = max(days_dict.keys())
+
+        day_numbers = list(range(1, days_in_month + 1))
+        values = [days_dict.get(day, 0) for day in day_numbers]
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.bar(day_numbers, values, color='#4e79a7', width=0.8)
+        ax.set_xlabel('Day of Month', fontsize=12)
+        ylabel = 'Unique People' if is_unique else 'People'
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(f"{chart_label}\n{month_label}", fontsize=14, fontweight='bold')
+        ax.set_xticks(day_numbers)
+        ax.grid(axis='y', alpha=0.3)
+
+        fig.text(0.5, 0.02, chart_label, ha='center', fontsize=10,
+                 bbox=dict(boxstyle='round', facecolor='#f0f0f0', edgecolor='#cccccc', pad=0.5))
+
+        plt.subplots_adjust(bottom=0.15)
+
+        ts_suffix = f"_{run_ts}" if run_ts else ""
+        output_file = Path(output_dir) / f"vrcx_monthly_{month_label}{ts_suffix}.png"
+        plt.savefig(output_file, dpi=150, bbox_inches='tight')
+        plt.close()
+        chart_files.append(str(output_file))
+        print(f"[OK] Chart saved to {output_file}")
+
+    return chart_files
+
+
 def create_weekly_charts(db, output_dir, start_date_str=None, end_date_str=None, chart_label='Weekly Breakdown - All Visitors', is_unique=False):
     """Create separate bar charts for each week showing day-of-week attendance."""
     try:
@@ -1656,7 +1819,7 @@ def create_combined_weekly_chart(db, output_file, start_date_str=None, end_date_
     print(f"[OK] Combined chart saved to {output_file}")
 
 
-def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
+def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_monthly=False, is_unique=False):
     """Export hour-by-hour data to CSV file."""
     try:
         import csv
@@ -1670,6 +1833,9 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
         if is_weekly:
             summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
             fieldnames = ['Week Start', 'Week End', 'Day of Week', 'Unique Visitors']
+        elif is_monthly:
+            summary = query.get_unique_visitors_monthly(start_date_str, end_date_str)
+            fieldnames = ['Month', 'Date', 'Unique Visitors']
         elif is_day_of_week:
             summary = query.get_unique_visitors_day_of_week(start_date_str, end_date_str)
             fieldnames = ['Day of Week', 'Avg Unique Visitors']
@@ -1687,6 +1853,9 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
         if is_weekly:
             summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
             fieldnames = ['Week Start', 'Week End', 'Day of Week', 'People']
+        elif is_monthly:
+            summary = query.get_monthly_daily_breakdown(start_date_str, end_date_str)
+            fieldnames = ['Month', 'Date', 'People']
         elif is_day_of_week:
             summary = query.get_day_of_week_average(start_date_str, end_date_str)
             fieldnames = ['Day of Week', 'Avg People']
@@ -1718,6 +1887,12 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
                         row['day_name'],
                         row['unique_visitors'] or 0
                     ])
+                elif is_monthly:
+                    writer.writerow([
+                        row['month_label'],
+                        row['date'],
+                        row['unique_visitors'] or 0
+                    ])
                 elif is_day_of_week:
                     writer.writerow([
                         days[row['day_of_week']],
@@ -1744,6 +1919,12 @@ def export_to_csv(db, output_file, date_str=None, start_date_str=None, end_date_
                         row['week_start'],
                         row['week_end'],
                         row['day_name'],
+                        row['unique_people'] or 0
+                    ])
+                elif is_monthly:
+                    writer.writerow([
+                        row['month_label'],
+                        row['date'],
                         row['unique_people'] or 0
                     ])
                 elif is_day_of_week:
@@ -1818,7 +1999,7 @@ def export_to_csv_for_instance(db, output_file, instance_id, date_str=None, is_u
     print(f"[OK] Exported to {output_file}")
 
 
-def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_unique=False):
+def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_date_str=None, is_average=False, is_daily=False, is_day_of_week=False, is_weekly=False, is_monthly=False, is_unique=False):
     """Export hour-by-hour data to Excel file."""
     try:
         import openpyxl
@@ -1833,6 +2014,9 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
         if is_weekly:
             summary = query.get_unique_visitors_weekly(start_date_str, end_date_str)
             headers = ['Week Start', 'Week End', 'Day of Week', 'Unique Visitors']
+        elif is_monthly:
+            summary = query.get_unique_visitors_monthly(start_date_str, end_date_str)
+            headers = ['Month', 'Date', 'Unique Visitors']
         elif is_day_of_week:
             summary = query.get_unique_visitors_day_of_week(start_date_str, end_date_str)
             headers = ['Day of Week', 'Avg Unique Visitors']
@@ -1850,6 +2034,9 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
         if is_weekly:
             summary = query.get_weekly_day_of_week_breakdown(start_date_str, end_date_str)
             headers = ['Week Start', 'Week End', 'Day of Week', 'People']
+        elif is_monthly:
+            summary = query.get_monthly_daily_breakdown(start_date_str, end_date_str)
+            headers = ['Month', 'Date', 'People']
         elif is_day_of_week:
             summary = query.get_day_of_week_average(start_date_str, end_date_str)
             headers = ['Day of Week', 'Avg People']
@@ -1895,6 +2082,12 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
                     row['day_name'],
                     row['unique_visitors'] or 0
                 ])
+            elif is_monthly:
+                ws.append([
+                    row['month_label'],
+                    row['date'],
+                    row['unique_visitors'] or 0
+                ])
             elif is_day_of_week:
                 ws.append([
                     days[row['day_of_week']],
@@ -1921,6 +2114,12 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
                     row['week_start'],
                     row['week_end'],
                     row['day_name'],
+                    row['unique_people'] or 0
+                ])
+            elif is_monthly:
+                ws.append([
+                    row['month_label'],
+                    row['date'],
                     row['unique_people'] or 0
                 ])
             elif is_day_of_week:
@@ -1953,6 +2152,13 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
         ws.column_dimensions['D'].width = 12
         # Center align numeric columns
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=4, max_col=4):
+            for cell in row:
+                cell.alignment = Alignment(horizontal="center")
+    elif is_monthly:
+        ws.column_dimensions['A'].width = 10
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 15
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=3, max_col=3):
             for cell in row:
                 cell.alignment = Alignment(horizontal="center")
     elif is_day_of_week:
@@ -1994,14 +2200,15 @@ def export_to_excel(db, output_file, date_str=None, start_date_str=None, end_dat
 # ==============================================================================
 
 def main():
-        """Main entry point."""
-        epilog = """
+    """Main entry point."""
+    epilog = """
 Modes (choose by flags):
     * Default / --date                 Hourly chart for a single date
     * --start-date --end-date          Hourly charts for each day in range
     * --average                        Average hourly across range
     * --day-of-week                    Average by day of week across range
     * --weekly                         Week-by-week day-of-week breakdown (also makes combined chart)
+    * --monthly                        Daily totals grouped by month (defaults to current month)
     * --instance-id / --instance       Hourly for a specific instance (single date or range)
     * --world-id                       Hourly for a specific world (single date or range)
     * --list-worlds                    List worlds visited in range
@@ -2023,6 +2230,7 @@ Common flags:
     parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
     parser.add_argument('--day-of-week', action='store_true', help='Show average attendance by day of week (Monday-Sunday)')
     parser.add_argument('--weekly', action='store_true', help='Show week-by-week breakdown with day-of-week attendance')
+    parser.add_argument('--monthly', action='store_true', help='Show daily totals grouped by month (uses current month when no dates are given)')
     parser.add_argument('--unique', action='store_true', help='Count unique visitors only once per day (ignores join/leave counts)')
     parser.add_argument('--export-data', action='store_true', help='Export data to CSV and Excel files')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output including database table information')
@@ -2037,7 +2245,16 @@ Common flags:
     # Determine dates to query
     is_date_range = args.start_date and args.end_date
     
-    if args.weekly:
+    if args.monthly:
+        if not args.start_date or not args.end_date:
+            today = datetime.now()
+            first_day = today.replace(day=1).strftime('%Y-%m-%d')
+            last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime('%Y-%m-%d')
+            if not args.start_date:
+                args.start_date = first_day
+            if not args.end_date:
+                args.end_date = last_day
+    elif args.weekly:
         if not args.start_date:
             args.start_date = datetime.now().strftime('%Y-%m-%d')
         if not args.end_date:
@@ -2071,7 +2288,6 @@ Common flags:
             for table in tables:
                 print(f"  - {table}")
         
-        # Run queries
         print("\n" + "="*80)
         print("QUERYING VRCX DATABASE")
         print("="*80)
@@ -2138,6 +2354,8 @@ Common flags:
                     date_str = current.strftime('%Y-%m-%d')
                     print_hour_by_hour_summary_for_world(db, args.world_id, args.world_name, date_str, args.unique)
                     current += timedelta(days=1)
+        elif args.monthly:
+            print_monthly_summary(db, args.start_date, args.end_date, args.unique)
         elif args.weekly:
             print_weekly_day_of_week_breakdown(db, args.start_date, args.end_date)
         elif args.day_of_week:
@@ -2167,7 +2385,25 @@ Common flags:
         print("GENERATING CHARTS")
         print(f"{'='*80}")
 
-        if args.weekly:
+        if args.monthly:
+            filename_base = f"vrcx_monthly_{args.start_date}_to_{args.end_date}"
+            if args.unique:
+                filename_base += "_unique"
+            filename_base += f"_{run_ts}"
+
+            chart_label = "Monthly Daily Breakdown - Unique Visitors" if args.unique else "Monthly Daily Breakdown - All Visitors"
+            chart_files = create_monthly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique, run_ts)
+            print(f"[OK] Created {len(chart_files)} monthly charts")
+
+            if args.export_data:
+                csv_file = output_dir / f"{filename_base}.csv"
+                xlsx_file = output_dir / f"{filename_base}.xlsx"
+                export_to_csv(db, str(csv_file), start_date_str=args.start_date,
+                             end_date_str=args.end_date, is_monthly=True, is_unique=args.unique)
+                export_to_excel(db, str(xlsx_file), start_date_str=args.start_date,
+                               end_date_str=args.end_date, is_monthly=True, is_unique=args.unique)
+
+        elif args.weekly:
             filename_base = f"vrcx_weekly_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
