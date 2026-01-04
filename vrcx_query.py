@@ -2139,6 +2139,9 @@ def main():
         output_dir = Path(os.getenv('VRCX_REPORTS_OUTPUT_PATH', './vrcx_exports'))
         output_dir.mkdir(exist_ok=True)
 
+        # Timestamp suffix so multiple runs on the same day don't overwrite
+        run_ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+
         print(f"\n{'='*80}")
         print("GENERATING CHARTS")
         print(f"{'='*80}")
@@ -2147,6 +2150,7 @@ def main():
             filename_base = f"vrcx_weekly_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             chart_label = "Weekly Breakdown - Unique Visitors" if args.unique else "Weekly Breakdown - All Visitors"
             chart_files = create_weekly_charts(db, str(output_dir), args.start_date, args.end_date, chart_label, args.unique)
@@ -2166,6 +2170,7 @@ def main():
             filename_base = f"vrcx_day_of_week_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             chart_label = "Day of Week - Unique Visitors" if args.unique else "Day of Week - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
@@ -2183,6 +2188,7 @@ def main():
             filename_base = f"vrcx_average_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             chart_label = "Average Hourly Attendance - Unique Visitors" if args.unique else "Average Hourly Attendance - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
@@ -2200,6 +2206,7 @@ def main():
             filename_base = f"vrcx_instance_{args.date or 'range'}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             chart_label = "Instance Hourly Attendance - Unique Visitors" if args.unique else "Instance Hourly Attendance - All Visitors"
             
@@ -2242,6 +2249,7 @@ def main():
             filename_base = f"vrcx_daily_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             # Generate hourly charts for each day in the range
             chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
