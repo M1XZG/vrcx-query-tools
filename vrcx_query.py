@@ -2230,7 +2230,7 @@ Common flags:
     parser.add_argument('--average', action='store_true', help='Calculate average attendance across date range')
     parser.add_argument('--day-of-week', action='store_true', help='Show average attendance by day of week (Monday-Sunday)')
     parser.add_argument('--weekly', action='store_true', help='Show week-by-week breakdown with day-of-week attendance')
-    parser.add_argument('--monthly', action='store_true', help='Show daily totals grouped by month (uses current month when no dates are given)')
+    parser.add_argument('--monthly', type=str, nargs='?', const='current', help='Show daily totals grouped by month. Optionally specify month as YYYY-MM (e.g., 2025-12). If no month given, defaults to current month')
     parser.add_argument('--unique', action='store_true', help='Count unique visitors only once per day (ignores join/leave counts)')
     parser.add_argument('--export-data', action='store_true', help='Export data to CSV and Excel files')
     parser.add_argument('--verbose', action='store_true', help='Show verbose output including database table information')
@@ -2245,15 +2245,31 @@ Common flags:
     # Determine dates to query
     is_date_range = args.start_date and args.end_date
     
-    if args.monthly:
-        if not args.start_date or not args.end_date:
+    if args.monthly is not None:
+        # Parse month argument if provided (YYYY-MM format) or use current month
+        if args.monthly == 'current':
+            # Use current month if no specific month provided
             today = datetime.now()
-            first_day = today.replace(day=1).strftime('%Y-%m-%d')
-            last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime('%Y-%m-%d')
-            if not args.start_date:
-                args.start_date = first_day
-            if not args.end_date:
-                args.end_date = last_day
+            year = today.year
+            month = today.month
+        else:
+            try:
+                month_date = datetime.strptime(args.monthly, '%Y-%m')
+                year = month_date.year
+                month = month_date.month
+            except ValueError:
+                print(f"Error: Invalid month format '{args.monthly}'. Use YYYY-MM (e.g., 2025-12)")
+                sys.exit(1)
+        
+        # Calculate first and last day of month
+        first_day = datetime(year, month, 1).strftime('%Y-%m-%d')
+        last_day = datetime(year, month, calendar.monthrange(year, month)[1]).strftime('%Y-%m-%d')
+        
+        # Set dates (allow overrides from --start-date/--end-date if explicitly provided)
+        if not args.start_date:
+            args.start_date = first_day
+        if not args.end_date:
+            args.end_date = last_day
     elif args.weekly:
         if not args.start_date:
             args.start_date = datetime.now().strftime('%Y-%m-%d')
@@ -2354,7 +2370,7 @@ Common flags:
                     date_str = current.strftime('%Y-%m-%d')
                     print_hour_by_hour_summary_for_world(db, args.world_id, args.world_name, date_str, args.unique)
                     current += timedelta(days=1)
-        elif args.monthly:
+        elif args.monthly is not None:
             print_monthly_summary(db, args.start_date, args.end_date, args.unique)
         elif args.weekly:
             print_weekly_day_of_week_breakdown(db, args.start_date, args.end_date)
@@ -2385,7 +2401,7 @@ Common flags:
         print("GENERATING CHARTS")
         print(f"{'='*80}")
 
-        if args.monthly:
+        if args.monthly is not None:
             filename_base = f"vrcx_monthly_{args.start_date}_to_{args.end_date}"
             if args.unique:
                 filename_base += "_unique"
