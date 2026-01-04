@@ -2230,6 +2230,7 @@ def main():
                     chart_filename = f"vrcx_instance_{date_str}"
                     if args.unique:
                         chart_filename += "_unique"
+                    chart_filename += f"_{run_ts}"
                     chart_file = output_dir / f"{chart_filename}.png"
                     create_daily_chart_for_instance(db, str(chart_file), args.instance_id, date_str, chart_label, args.unique)
                     chart_count += 1
@@ -2241,7 +2242,7 @@ def main():
                     csv_file = output_dir / f"vrcx_instance_{args.start_date}_to_{args.end_date}"
                     if args.unique:
                         csv_file += "_unique"
-                    csv_file += ".csv"
+                    csv_file += f"_{run_ts}.csv"
                     # Export the most recent day for CSV when doing date range
                     export_to_csv_for_instance(db, str(csv_file), args.instance_id, args.end_date, args.unique)
 
@@ -2263,6 +2264,7 @@ def main():
                 chart_filename = f"vrcx_hourly_{date_str}"
                 if args.unique:
                     chart_filename += "_unique"
+                chart_filename += f"_{run_ts}"
                 chart_file = output_dir / f"{chart_filename}.png"
                 create_daily_chart(db, str(chart_file), date_str, chart_label, args.unique)
                 chart_count += 1
@@ -2282,6 +2284,7 @@ def main():
             filename_base = f"vrcx_hourly_{args.date}"
             if args.unique:
                 filename_base += "_unique"
+            filename_base += f"_{run_ts}"
 
             chart_label = "Hourly Attendance - Unique Visitors" if args.unique else "Hourly Attendance - All Visitors"
             chart_file = output_dir / f"{filename_base}.png"
