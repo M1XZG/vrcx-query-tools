@@ -1,7 +1,7 @@
 # Python dependencies for VRCX Query Tools
 
 # Environment variable management
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Excel export support
 openpyxl==3.1.2
